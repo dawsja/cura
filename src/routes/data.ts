@@ -69,7 +69,7 @@ dataRoutes.get(
       db.select().from(settings).where(eq(settings.userId, uid)).orderBy(asc(settings.key)),
     ]);
 
-    attachment(c, 'cura-money-export.json', 'application/json; charset=utf-8');
+    attachment(c, 'cura-export.json', 'application/json; charset=utf-8');
     return c.body(JSON.stringify({
       format: 'cura-money-user-export',
       version: 2,
@@ -138,7 +138,7 @@ dataRoutes.get(
       ].map(csvCell).join(','));
     }
 
-    attachment(c, 'cura-money-transactions.csv', 'text/csv; charset=utf-8');
+    attachment(c, 'cura-transactions.csv', 'text/csv; charset=utf-8');
     return c.body(`\uFEFF${lines.join('\r\n')}\r\n`);
   }),
 );

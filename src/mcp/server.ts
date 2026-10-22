@@ -112,7 +112,7 @@ function defineTool<S extends z.ZodRawShape>(
 
 export function createFinanceMcpServer(userId: string): McpServer {
   const server = new McpServer(
-    { name: 'cura-money', title: 'Cura Money', version: SERVER_VERSION },
+    { name: 'cura', title: 'Cura Money', version: SERVER_VERSION },
     {
       instructions:
         'Read-only access to one Cura Money user\'s personal finances. Amounts are in major currency units '

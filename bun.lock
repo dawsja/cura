@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "cura-money-v2",
+      "name": "cura",
       "dependencies": {
         "@hono/node-server": "^2.1.0",
         "@modelcontextprotocol/sdk": "1.32.1",

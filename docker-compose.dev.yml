@@ -17,7 +17,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: builder
-    image: cura-money-dev:local
+    image: cura-dev:local
     pull_policy: never
     command: ["bun", "run", "--watch", "src/index.ts"]
     volumes:

@@ -3,7 +3,7 @@ import { env } from './env';
 import { logger } from './logger';
 
 const REGISTRY = 'https://ghcr.io';
-const REPOSITORY = 'dawsja/cura-money';
+const REPOSITORY = 'dawsja/cura';
 const SUCCESS_TTL_MS = 30 * 60 * 1000;
 const FAILURE_TTL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -60,7 +60,7 @@ let inFlight: Promise<ContainerUpdateStatus> | null = null;
 function registryHeaders(token: string, accept?: string): HeadersInit {
   return {
     Authorization: `Bearer ${token}`,
-    'User-Agent': 'cura-money-update-check',
+    'User-Agent': 'cura-update-check',
     ...(accept ? { Accept: accept } : {}),
   };
 }

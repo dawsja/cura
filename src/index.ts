@@ -338,7 +338,7 @@ async function main(): Promise<void> {
     ready = true;
     logger.info(
       { port: info.port, env: env.NODE_ENV, cron: env.DEMO_MODE || env.RUN_CRON, demoMode: env.DEMO_MODE },
-      'cura-money v2 listening',
+      'cura listening',
     );
   });
 }

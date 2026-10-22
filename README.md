@@ -38,6 +38,17 @@ app replicas, deploy in a way that allows startup migrations to finish before
 depending on the new replicas; scheduled jobs are protected by PostgreSQL
 advisory locks and may remain enabled on every replica.
 
+### Moving from the `cura-money` image
+
+The repository was renamed from `dawsja/cura-money` to `dawsja/cura`, and the
+image is now `ghcr.io/dawsja/cura`. If your `docker-compose.yml` still says
+`image: ghcr.io/dawsja/cura-money:latest`, change it to
+`image: ghcr.io/dawsja/cura:latest`, then update as above. Nothing else
+changes: the database, `.env`, and volumes are reused as they are.
+
+Builds are still published under the old name for a while, so an install that
+hasn't switched keeps receiving updates until you change it.
+
 ## Configuration
 
 ### Public demo mode
@@ -200,7 +211,7 @@ structured request and error logs.
 Create a PostgreSQL custom-format backup and keep it outside the Compose volume:
 
 ```bash
-docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > cura-money.dump
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > cura.dump
 ```
 
 To restore, stop the app so it cannot write or migrate during the restore,
@@ -211,7 +222,7 @@ currently installed schema has newer foreign-key dependencies.
 ```bash
 docker compose stop app
 docker compose exec -T db sh -c 'dropdb -U "$POSTGRES_USER" --maintenance-db=postgres --if-exists --force "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" -O "$POSTGRES_USER" "$POSTGRES_DB"'
-docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-privileges --exit-on-error' < cura-money.dump
+docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-privileges --exit-on-error' < cura.dump
 docker compose up -d app
 ```
 
