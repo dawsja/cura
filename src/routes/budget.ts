@@ -15,7 +15,7 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { and, desc, eq, gt, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, lte } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { monthlyBudgets } from '@/db/schema/monthly_budgets';
 import { subCategories } from '@/db/schema/sub_categories';
@@ -80,7 +80,6 @@ budgetRoutes.post(
       return badRequest(c, 'subCategoryId must belong to the current user');
 
     const saved = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-budget:${uid}:${subCategoryId}`}))`);
       const [previous] = await tx
         .select({ planned: monthlyBudgets.planned })
         .from(monthlyBudgets)
@@ -126,7 +125,7 @@ budgetRoutes.post(
         .onConflictDoNothing();
 
       const [row] = await tx
-        .select({ revision: sql<string>`xmin::text` })
+        .select({ revision: monthlyBudgets.revision })
         .from(monthlyBudgets)
         .where(and(
           eq(monthlyBudgets.userId, uid),
@@ -149,9 +148,8 @@ budgetRoutes.post(
     const { subCategoryId, yearMonth, revision } = parsed.data;
 
     const applied = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-budget:${uid}:${subCategoryId}`}))`);
       const [current] = await tx
-        .select({ revision: sql<string>`xmin::text` })
+        .select({ revision: monthlyBudgets.revision })
         .from(monthlyBudgets)
         .where(and(
           eq(monthlyBudgets.userId, uid),

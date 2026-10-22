@@ -1,17 +1,13 @@
 import { defineConfig } from 'drizzle-kit';
 
-const url = process.env.DATABASE_URL;
-if (!url) {
-  throw new Error('DATABASE_URL is required for drizzle-kit');
-}
-
+// Generating migrations only compares the schema with drizzle/sqlite; it
+// does not open a database. drizzle/postgres holds the frozen migrations
+// the one-time Postgres import (src/db/import-postgres.ts) applies.
 export default defineConfig({
   schema: './src/db/schema/index.ts',
-  out: './drizzle',
-  dialect: 'postgresql',
-  dbCredentials: { url },
-  // Better Auth uses snake_case in the schema. We keep snake_case across
-  // the whole project for Postgres-friendly column names.
+  out: './drizzle/sqlite',
+  dialect: 'sqlite',
+  dbCredentials: { url: process.env.DATABASE_PATH ?? './data/cura.db' },
   casing: 'snake_case',
   strict: true,
   verbose: true,

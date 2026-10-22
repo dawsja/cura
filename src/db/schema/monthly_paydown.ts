@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, text, integer, timestamp, primaryKey, index, check } from 'drizzle-orm/pg-core';
+import { sqliteTable, text, integer, index, primaryKey, check } from 'drizzle-orm/sqlite-core';
 import { user } from './auth';
-import { numericNumber } from './numeric-number';
+import { dollarsAsCents } from './cents';
 
 /**
  * Monthly paydown snapshots — per-account planned debt payment keyed
@@ -14,7 +14,7 @@ import { numericNumber } from './numeric-number';
  * hidden/deleted accounts at read time so the user can un-hide
  * without losing their plan.
  */
-export const monthlyPaydown = pgTable(
+export const monthlyPaydown = sqliteTable(
   'monthly_paydown',
   {
     userId: text('user_id')
@@ -22,16 +22,16 @@ export const monthlyPaydown = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     accountId: text('account_id').notNull(),
     yearMonth: text('year_month').notNull(),
-    planned: numericNumber('planned', { precision: 16, scale: 2 }).notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    planned: dollarsAsCents('planned').notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.userId, t.accountId, t.yearMonth] }),
     userIdx: index('idx_monthly_paydown_user').on(t.userId),
-    yearMonthFormat: check('monthly_paydown_year_month_format', sql`${t.yearMonth} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
+    yearMonthFormat: check('monthly_paydown_year_month_format', sql`${t.yearMonth} GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]' AND substr(${t.yearMonth}, 6, 2) BETWEEN '01' AND '12'`),
     plannedRange: check(
       'monthly_paydown_planned_range',
-      sql`${t.planned} BETWEEN 0 AND 90000000000000`,
+      sql`${t.planned} BETWEEN 0 AND 9000000000000000`,
     ),
   }),
 );
@@ -49,14 +49,14 @@ export type NewMonthlyPaydownRow = typeof monthlyPaydown.$inferInsert;
  * edit doesn't masquerade as a bulk sync (which is what the UI's
  * "via Pay down page" wording is signalling).
  */
-export const monthlyPaydownSnapshots = pgTable(
+export const monthlyPaydownSnapshots = sqliteTable(
   'monthly_paydown_snapshots',
   {
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     yearMonth: text('year_month').notNull(),
-    syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+    syncedAt: integer('synced_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
     rowCount: integer('row_count').notNull(),
   },
   (t) => ({
@@ -64,7 +64,7 @@ export const monthlyPaydownSnapshots = pgTable(
     userIdx: index('idx_monthly_paydown_snapshots_user').on(t.userId),
     yearMonthFormat: check(
       'monthly_paydown_snapshots_year_month_format',
-      sql`${t.yearMonth} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`,
+      sql`${t.yearMonth} GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]' AND substr(${t.yearMonth}, 6, 2) BETWEEN '01' AND '12'`,
     ),
     rowCountRange: check('monthly_paydown_snapshots_row_count_range', sql`${t.rowCount} >= 0`),
   }),

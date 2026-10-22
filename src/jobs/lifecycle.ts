@@ -1,25 +1,21 @@
-import { withAdvisoryLock } from '@/db/client';
-
 export type JobName = 'simplefin-poll' | 'budget-rollforward' | 'retention' | 'demo-reset' | 'mcp-auth-cleanup';
 
 export type JobRunResult<T> =
   | { status: 'completed'; value: T }
-  | { status: 'skipped'; reason: 'in_process' | 'advisory_lock' };
+  | { status: 'skipped'; reason: 'in_process' };
 
 const runningNames = new Set<JobName>();
 const activeJobs = new Set<Promise<unknown>>();
 
-/** Prevent duplicate runs locally and across replicas while tracking shutdown work. */
+/** Prevent overlapping runs of the same job while tracking shutdown work. */
 export async function runExclusiveJob<T>(name: JobName, work: () => Promise<T>): Promise<JobRunResult<T>> {
   if (runningNames.has(name)) return { status: 'skipped', reason: 'in_process' };
   runningNames.add(name);
 
-  const task = withAdvisoryLock(name, work);
+  const task = work();
   activeJobs.add(task);
   try {
-    const result = await task;
-    if (!result.acquired) return { status: 'skipped', reason: 'advisory_lock' };
-    return { status: 'completed', value: result.value };
+    return { status: 'completed', value: await task };
   } finally {
     activeJobs.delete(task);
     runningNames.delete(name);

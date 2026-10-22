@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { db, withAdvisoryLock } from '@/db/client';
+import { db } from '@/db/client';
 import { accounts } from '@/db/schema/accounts';
 import { settings } from '@/db/schema/settings';
 import {
@@ -729,14 +729,7 @@ export async function syncSimpleFinToDatabase(
   }
   activeSyncUsers.add(userId);
   try {
-    const result = await withAdvisoryLock(
-      `simplefin-user:${userId}`,
-      () => performSimpleFinSync(userId, options),
-    );
-    if (!result.acquired) {
-      throw new SimpleFinError('A SimpleFIN sync is already in progress for this user.', 'sync_in_progress');
-    }
-    return result.value;
+    return await performSimpleFinSync(userId, options);
   } finally {
     activeSyncUsers.delete(userId);
   }

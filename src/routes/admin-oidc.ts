@@ -17,7 +17,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { db } from '@/db/client';
+import { db, sqlAll } from '@/db/client';
 import { oidcProviders } from '@/db/schema/oidc_providers';
 import { setupState } from '@/db/schema/setup_state';
 import { requireAdmin, routeParam } from '@/lib/tenant';
@@ -212,8 +212,6 @@ adminOidcRoutes.patch(
     let updateResult: 'not_found' | 'updated';
     try {
       updateResult = await db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('cura-admin-roster'))`);
-        await tx.execute(sql`SELECT id FROM setup_state WHERE id = 1 FOR UPDATE`);
         const [current] = await tx.select().from(oidcProviders).where(eq(oidcProviders.id, id)).limit(1);
         if (!current) return 'not_found' as const;
         const [state] = await tx
@@ -224,7 +222,7 @@ adminOidcRoutes.patch(
         const mutatesSigninPath = current.isActive && Object.keys(parsed.data).length > 0;
         await tx.update(oidcProviders).set(patch).where(eq(oidcProviders.id, id));
         if (state?.localAuthDisabled && mutatesSigninPath) {
-          const linkedAdmin = await tx.execute(sql`
+          const linkedAdmin = await sqlAll(sql`
             SELECT 1 FROM oidc_providers p
             JOIN "account" a ON a.provider_id = p.provider_id
             JOIN "user" u ON u.id = a.user_id AND u.role = 'admin'
@@ -269,8 +267,6 @@ adminOidcRoutes.delete(
     let deleteResult: 'not_found' | 'deleted';
     try {
       deleteResult = await db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('cura-admin-roster'))`);
-        await tx.execute(sql`SELECT id FROM setup_state WHERE id = 1 FOR UPDATE`);
         const [current] = await tx.select().from(oidcProviders).where(eq(oidcProviders.id, id)).limit(1);
         if (!current) return 'not_found' as const;
         const [state] = await tx
@@ -280,7 +276,7 @@ adminOidcRoutes.delete(
           .limit(1);
         await tx.delete(oidcProviders).where(eq(oidcProviders.id, id));
         if (state?.localAuthDisabled) {
-          const linkedAdmin = await tx.execute(sql`
+          const linkedAdmin = await sqlAll(sql`
             SELECT 1 FROM oidc_providers p
             JOIN "account" a ON a.provider_id = p.provider_id
             JOIN "user" u ON u.id = a.user_id AND u.role = 'admin'

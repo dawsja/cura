@@ -28,12 +28,21 @@ const httpOrigin = z.string().default('').superRefine((value, ctx) => {
   }
 });
 
-const databaseUrl = z.string().url().superRefine((value, ctx) => {
-  const protocol = new URL(value).protocol;
-  if (protocol !== 'postgres:' && protocol !== 'postgresql:') {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'must use postgres or postgresql' });
-  }
-});
+const databaseUrl = z.preprocess(
+  (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().url().optional().superRefine((value, ctx) => {
+    if (value === undefined) return;
+    const protocol = new URL(value).protocol;
+    if (protocol !== 'postgres:' && protocol !== 'postgresql:') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'must use postgres or postgresql' });
+    }
+  }),
+);
+
+const booleanFlag = (fallback: 'true' | 'false') => z
+  .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0'), z.literal('')])
+  .default(fallback)
+  .transform((v) => v === 'true' || v === '1');
 
 const previousEncryptionKeys = z.preprocess(
   (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
@@ -99,7 +108,19 @@ const Env = z.object({
   // there is no meaningful running container revision to compare.
   APP_REVISION: z.string().max(128).default(''),
 
+  // The SQLite database file. Keep it on a persistent volume.
+  DATABASE_PATH: z.string().trim().min(1).default(
+    process.env.NODE_ENV === 'production' ? '/data/cura.db' : './data/cura.db',
+  ),
+
+  // Only used to move an existing install off Postgres: when DATABASE_PATH
+  // does not exist yet and this is set, startup copies the Postgres data into
+  // a new SQLite file. Remove it (and the `db` service) once that is done.
   DATABASE_URL: databaseUrl,
+
+  // Copy Postgres into SQLite again even though a previous copy was recorded.
+  // Only for recovering a lost SQLite file; changes made since are lost.
+  SQLITE_REIMPORT: booleanFlag('false'),
 
   BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 chars'),
   DATA_ENCRYPTION_KEY: z.preprocess(
@@ -109,14 +130,13 @@ const Env = z.object({
   DATA_ENCRYPTION_KEY_PREVIOUS: previousEncryptionKeys,
 
   // Enable the in-process cron scheduler (SimpleFIN poll + budget roll-forward
-  // + retention sweep). Advisory locks make this safe across app replicas.
+  // + retention sweep). Run a single app instance per database file.
   RUN_CRON: z
     .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0'), z.literal('')])
     .default('true')
     .transform((v) => v === 'true' || v === '1'),
 
-  // Remote MCP server (/mcp) plus its OAuth device-code endpoints. Disabled
-  // automatically in DEMO_MODE.
+  // Remote MCP server (/mcp). Disabled automatically in DEMO_MODE.
   MCP_ENABLED: z
     .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0'), z.literal('')])
     .default('true')

@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, text, timestamp, index, foreignKey, check } from 'drizzle-orm/pg-core';
+import { sqliteTable, text, integer, index, foreignKey, check } from 'drizzle-orm/sqlite-core';
 import { accounts } from './accounts';
 import { user } from './auth';
-import { numericNumber } from './numeric-number';
+import { dollarsAsCents } from './cents';
 
 /**
  * Savings goals — "save up for X" targets watched against an account.
@@ -13,7 +13,7 @@ import { numericNumber } from './numeric-number';
  * account row is the source of truth for live balance, and the goal row
  * carries the user's intent (target amount + starting offset).
  */
-export const goals = pgTable(
+export const goals = sqliteTable(
   'goals',
   {
     id: text('id').primaryKey(),
@@ -21,17 +21,17 @@ export const goals = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    target: numericNumber('target', { precision: 16, scale: 2 }).notNull(),
+    target: dollarsAsCents('target').notNull(),
     // Starting value entered by the user at goal creation. We don't
     // reference it in the progress bar (the account balance drives
     // progress), but we keep it so the user can see "you've saved $X
     // since you created this goal" if they want.
-    startingValue: numericNumber('starting_value', { precision: 16, scale: 2 }).notNull().default(0),
+    startingValue: dollarsAsCents('starting_value').notNull().default(0),
     // The account whose balance the progress bar tracks. Set when the
     // goal is created; nullable so a deleted account doesn't blow up
     // reads — callers should treat null as "account gone, hide progress".
     accountId: text('account_id'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
   },
   (t) => ({
     userIdx: index('idx_goals_user').on(t.userId),
@@ -42,11 +42,11 @@ export const goals = pgTable(
     }),
     targetRange: check(
       'goals_target_range',
-      sql`${t.target} > 0 AND ${t.target} <= 90000000000000`,
+      sql`${t.target} > 0 AND ${t.target} <= 9000000000000000`,
     ),
     startingValueRange: check(
       'goals_starting_value_range',
-      sql`${t.startingValue} BETWEEN 0 AND 90000000000000`,
+      sql`${t.startingValue} BETWEEN 0 AND 9000000000000000`,
     ),
   }),
 );

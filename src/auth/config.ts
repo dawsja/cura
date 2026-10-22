@@ -89,7 +89,7 @@ export function createAuth(providers: AuthOidcProvider[]) {
     },
 
     database: drizzleAdapter(db, {
-      provider: 'pg',
+      provider: 'sqlite',
       schema: {
         user: schema.user,
         session: schema.session,

@@ -18,7 +18,7 @@
  * `oidc_providers.provider_id`. Stale account rows for removed, renamed,
  * or inactive providers do not count as a viable sign-in path.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { setupState } from '@/db/schema/setup_state';
 import { oidcProviders } from '@/db/schema/oidc_providers';
@@ -73,8 +73,6 @@ function logReadFailureOnce(where: string, err: unknown): void {
  */
 export async function setLocalAuthDisabled(disabled: boolean): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('cura-admin-roster'))`);
-    await tx.execute(sql`SELECT id FROM setup_state WHERE id = 1 FOR UPDATE`);
     if (disabled) {
       const oidcAdmins = await tx
         .select({ id: authUser.id })

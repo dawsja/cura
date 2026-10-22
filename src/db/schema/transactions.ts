@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, text, boolean, bigint, date, timestamp, index, unique, uniqueIndex, check, foreignKey } from 'drizzle-orm/pg-core';
+import { sqliteTable, text, integer, index, uniqueIndex, unique, foreignKey, check } from 'drizzle-orm/sqlite-core';
 import { user } from './auth';
-import { categories, transactionTypeEnum } from './categories';
+import { categories, transactionTypes } from './categories';
 import { subCategories } from './sub_categories';
 
 /**
@@ -15,46 +15,46 @@ import { subCategories } from './sub_categories';
  * Manually-entered transactions set it FALSE on insert so the user
  * doesn't have to review the data they just typed in themselves.
  */
-export const transactions = pgTable(
+export const transactions = sqliteTable(
   'transactions',
   {
     id: text('id').primaryKey(),
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    date: date('date').notNull(),
-    sourceDate: date('source_date'),
-    dateUserModified: boolean('date_user_modified').notNull().default(false),
+    date: text('date').notNull(),
+    sourceDate: text('source_date'),
+    dateUserModified: integer('date_user_modified', { mode: 'boolean' }).notNull().default(false),
     merchant: text('merchant').notNull(),
     // User-edited merchant labels must survive SimpleFIN re-syncs.
-    merchantUserModified: boolean('merchant_user_modified').notNull().default(false),
+    merchantUserModified: integer('merchant_user_modified', { mode: 'boolean' }).notNull().default(false),
     // Classification before a user rule or manual correction is applied.
     // Scoped rules match these immutable source values so applying a rule
     // does not change the fields that determine whether it matches.
     sourceCategory: text('source_category').notNull(),
     sourceSubCategory: text('source_sub_category'),
-    sourceType: transactionTypeEnum('source_type').notNull(),
-    sourceClassificationTrusted: boolean('source_classification_trusted').notNull().default(true),
+    sourceType: text('source_type', { enum: transactionTypes }).notNull(),
+    sourceClassificationTrusted: integer('source_classification_trusted', { mode: 'boolean' }).notNull().default(true),
     category: text('category').notNull(),
     subCategory: text('sub_category'),
     categoryId: text('category_id'),
     subCategoryId: text('sub_category_id'),
     // User-picked assignments are transaction-specific overrides and must
     // not be replaced by later historical rule runs.
-    categoryUserModified: boolean('category_user_modified').notNull().default(false),
+    categoryUserModified: integer('category_user_modified', { mode: 'boolean' }).notNull().default(false),
     // Stable ledger identity. `account` remains a display snapshot for
     // compatibility and for rows whose legacy name could not be backfilled.
     accountId: text('account_id'),
     account: text('account').notNull(),
-    amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
-    type: transactionTypeEnum('type').notNull(),
+    amountCents: integer('amount_cents', { mode: 'number' }).notNull(),
+    type: text('type', { enum: transactionTypes }).notNull(),
     notes: text('notes'),
     externalId: text('external_id'),
-    sourcePending: boolean('source_pending'),
-    sourceTransactedAt: bigint('source_transacted_at', { mode: 'number' }),
-    sourceLastSeenAt: timestamp('source_last_seen_at', { withTimezone: true }),
-    needsReview: boolean('needs_review').notNull().default(false),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    sourcePending: integer('source_pending', { mode: 'boolean' }),
+    sourceTransactedAt: integer('source_transacted_at', { mode: 'number' }),
+    sourceLastSeenAt: integer('source_last_seen_at', { mode: 'timestamp_ms' }),
+    needsReview: integer('needs_review', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
   },
   (t) => ({
     userIdx: index('idx_transactions_user').on(t.userId),

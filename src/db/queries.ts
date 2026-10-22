@@ -7,9 +7,9 @@
  * Functions are organized by resource: accounts, categories, sub-categories,
  * transactions, goals, monthly_budgets, settings.
  */
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { db } from './client';
+import { db, sqlAll } from './client';
 import { accounts } from './schema/accounts';
 import { categories } from './schema/categories';
 import { subCategories } from './schema/sub_categories';
@@ -140,7 +140,6 @@ export async function seedInitialCategoriesIfEmpty(userId: string): Promise<void
   await db.transaction(async (tx) => {
     // Defaults are a one-time onboarding action. The marker preserves user
     // deletions; missing default IDs must never be interpreted as corruption.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-category-seed:${userId}`}))`);
     const [seeded] = await tx
       .select({ value: settings.value })
       .from(settings)
@@ -305,7 +304,6 @@ export async function editAccount(userId: string, id: string, patch: Partial<Acc
       .select()
       .from(accounts)
       .where(and(eq(accounts.userId, userId), eq(accounts.id, id)))
-      .for('update')
       .limit(1);
     if (!existing) return;
     const nextType = (patch.type ?? existing.type) as AccountType;
@@ -486,7 +484,6 @@ export async function deleteAccount(
       .select({ id: accounts.id, name: accounts.name })
       .from(accounts)
       .where(and(eq(accounts.userId, userId), eq(accounts.id, id)))
-      .for('update')
       .limit(1);
     if (!account) return 'not_found';
     if (accountSource(account.id) === 'simplefin') return 'simplefin_forbidden';
@@ -612,7 +609,9 @@ export async function getAllCategories(userId: string): Promise<MainCategory[]> 
       .from(categories)
       .where(eq(categories.userId, userId))
       .orderBy(asc(categories.sortOrder), asc(categories.name)),
-    db.select().from(subCategories).where(eq(subCategories.userId, userId)),
+    // Sub-categories keep the order they were created in (the import from
+    // Postgres inserted them in the order Postgres listed them).
+    db.select().from(subCategories).where(eq(subCategories.userId, userId)).orderBy(sql`rowid`),
   ]);
   const subMap = new Map<string, SubCategory[]>();
   for (const s of subRows) {
@@ -722,6 +721,14 @@ export async function subCategoryExists(userId: string, id: string): Promise<boo
   return rows.length === 1;
 }
 
+/**
+ * Case-insensitive name match for duplicate checks. Done in JS because
+ * SQLite's lower() only folds ASCII letters.
+ */
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 export async function addMainCategory(
   userId: string,
   name: string,
@@ -732,10 +739,8 @@ export async function addMainCategory(
     throw Object.assign(new Error('Pay down goals is managed from the Pay down page'), { status: 400 });
   }
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-categories:${userId}`}))`);
-    const duplicate = await tx.select({ id: categories.id }).from(categories)
-      .where(and(eq(categories.userId, userId), sql`lower(btrim(${categories.name})) = lower(btrim(${name}))`)).limit(1);
-    if (duplicate.length > 0) throw Object.assign(new Error('A category with this name already exists'), { status: 409 });
+    const siblings = await tx.select({ name: categories.name }).from(categories).where(eq(categories.userId, userId));
+    if (siblings.some((sibling) => sameName(sibling.name, name))) throw Object.assign(new Error('A category with this name already exists'), { status: 409 });
     const id = `cat-${nanoid(10)}`;
     const [top] = await tx
       .select({ sortOrder: categories.sortOrder })
@@ -754,7 +759,6 @@ export async function editMainCategory(userId: string, id: string, name: string)
     throw Object.assign(new Error('Pay down goals is managed from the Pay down page'), { status: 400 });
   }
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-categories:${userId}`}))`);
     const [existing] = await tx
       .select({ name: categories.name })
       .from(categories)
@@ -764,12 +768,11 @@ export async function editMainCategory(userId: string, id: string, name: string)
     if (existing.name === 'Pay down goals') {
       throw Object.assign(new Error('Pay down goals is managed from the Pay down page'), { status: 400 });
     }
-    const duplicate = await tx.select({ id: categories.id }).from(categories).where(and(
+    const siblings = await tx.select({ name: categories.name }).from(categories).where(and(
       eq(categories.userId, userId),
-      sql`lower(btrim(${categories.name})) = lower(btrim(${name}))`,
       sql`${categories.id} <> ${id}`,
-    )).limit(1);
-    if (duplicate.length > 0) throw Object.assign(new Error('A category with this name already exists'), { status: 409 });
+    ));
+    if (siblings.some((sibling) => sameName(sibling.name, name))) throw Object.assign(new Error('A category with this name already exists'), { status: 409 });
 
     await tx
       .update(categories)
@@ -843,7 +846,6 @@ export async function addSubCategory(
   planned: number,
 ): Promise<SubCategory> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-subcategories:${userId}:${mainCategoryId}`}))`);
     const parent = await tx.select({ id: categories.id, name: categories.name }).from(categories).where(and(
       eq(categories.userId, userId),
       eq(categories.id, mainCategoryId),
@@ -852,12 +854,11 @@ export async function addSubCategory(
     if (parent[0]!.name === 'Pay down goals') {
       throw Object.assign(new Error('Pay down goal categories follow their account names'), { status: 400 });
     }
-    const duplicate = await tx.select({ id: subCategories.id }).from(subCategories).where(and(
+    const siblings = await tx.select({ name: subCategories.name }).from(subCategories).where(and(
       eq(subCategories.userId, userId),
       eq(subCategories.mainCategoryId, mainCategoryId),
-      sql`lower(btrim(${subCategories.name})) = lower(btrim(${name}))`,
-    )).limit(1);
-    if (duplicate.length > 0) throw Object.assign(new Error('A sub-category with this name already exists'), { status: 409 });
+    ));
+    if (siblings.some((sibling) => sameName(sibling.name, name))) throw Object.assign(new Error('A sub-category with this name already exists'), { status: 409 });
     const id = `sub-${nanoid(10)}`;
     await tx.insert(subCategories).values({ id, userId, mainCategoryId, name, planned });
     return { id, name, planned };
@@ -884,12 +885,10 @@ export async function syncPaydownCategories(
   if (accountNames.length === 0) return result;
 
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-paydown-categories:${userId}`}))`);
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-categories:${userId}`}))`);
     const paydownCategories = await tx
       .select({ id: categories.id })
       .from(categories)
-      .where(and(eq(categories.userId, userId), sql`lower(btrim(${categories.name})) = 'pay down goals'`))
+      .where(and(eq(categories.userId, userId), sql`lower(trim(${categories.name})) = 'pay down goals'`))
       .limit(2);
     if (paydownCategories.length > 1) {
       throw Object.assign(new Error('Multiple Pay down goals categories must be resolved before saving a plan'), { status: 409 });
@@ -913,7 +912,6 @@ export async function syncPaydownCategories(
         sortOrder: (top?.sortOrder ?? -1) + 1,
       });
     }
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-subcategories:${userId}:${mainCategoryId}`}))`);
 
     const existing = await tx
       .select({ id: subCategories.id, name: subCategories.name })
@@ -990,7 +988,6 @@ export async function editSubCategory(
   planned?: number,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-subcategories:${userId}:${mainCategoryId}`}))`);
     const [existing] = await tx
       .select({ name: subCategories.name, mainName: categories.name })
       .from(subCategories)
@@ -1010,13 +1007,12 @@ export async function editSubCategory(
     if (existing.mainName === 'Pay down goals') {
       throw Object.assign(new Error('Pay down goal categories follow their account names'), { status: 400 });
     }
-    const duplicate = await tx.select({ id: subCategories.id }).from(subCategories).where(and(
+    const siblings = await tx.select({ name: subCategories.name }).from(subCategories).where(and(
       eq(subCategories.userId, userId),
       eq(subCategories.mainCategoryId, mainCategoryId),
-      sql`lower(btrim(${subCategories.name})) = lower(btrim(${name}))`,
       sql`${subCategories.id} <> ${subCategoryId}`,
-    )).limit(1);
-    if (duplicate.length > 0) throw Object.assign(new Error('A sub-category with this name already exists'), { status: 409 });
+    ));
+    if (siblings.some((sibling) => sameName(sibling.name, name))) throw Object.assign(new Error('A sub-category with this name already exists'), { status: 409 });
 
     await tx
       .update(subCategories)
@@ -1381,7 +1377,7 @@ export async function getBudgetActivity(userId: string, yearMonth: string): Prom
       splits.set(split.transactionId, rows);
     }
     return { parentRows, splits };
-  }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
+  });
   const grouped = new Map<string, { row: BudgetActivityRow; cents: number }>();
   for (const parent of parentRows) {
     const parentSplits = splits.get(parent.id);
@@ -1477,6 +1473,17 @@ function compactAlnum(s: string): string {
 }
 
 /**
+ * SQL counterpart of compactAlnum for search. SQLite has no regex replace,
+ * so this strips whitespace and the punctuation that shows up in merchant,
+ * category and account names; other characters stay, and a compact needle
+ * still matches as a substring around them.
+ */
+const COMPACT_STRIPPED = [' ', '\t', '-', '.', ',', "'", '"', '&', '*', '#', '/', '\\', '_', '(', ')', ':', ';', '!', '?', '@', '+'];
+function compactSql(expression: SQL): SQL {
+  return COMPACT_STRIPPED.reduce<SQL>((inner, char) => sql`replace(${inner}, ${char}, '')`, expression);
+}
+
+/**
  * True when `haystack` fuzzy-matches a single search token:
  *   - case-insensitive substring, or
  *   - alnum-only substring ("mcdonalds" ↔ "McDonald's", "401k" ↔ "401(k)").
@@ -1524,7 +1531,7 @@ function buildFuzzySearchCondition(rawQ: string, meta: Map<string, AccountLedger
       const parts = [sql`LOWER(COALESCE(${col}, '')) LIKE ${needle} ESCAPE '\\'`];
       if (compactNeedle) {
         parts.push(
-          sql`regexp_replace(LOWER(COALESCE(${col}, '')), '[^a-z0-9]+', '', 'g') LIKE ${compactNeedle} ESCAPE '\\'`,
+          sql`${compactSql(sql`LOWER(COALESCE(${col}, ''))`)} LIKE ${compactNeedle} ESCAPE '\\'`,
         );
       }
       return sql`(${sql.join(parts, sql` OR `)})`;
@@ -1554,12 +1561,12 @@ function buildFuzzySearchCondition(rawQ: string, meta: Map<string, AccountLedger
 
     // Numeric token also matches amount (e.g. "12.99" or "50").
     if (/^\d+(\.\d+)?$/.test(token)) {
-      orParts.push(sql`CAST((${transactions.amountCents}::numeric / 100) AS TEXT) LIKE ${needle} ESCAPE '\\'`);
+      orParts.push(sql`printf('%.2f', ${transactions.amountCents} / 100.0) LIKE ${needle} ESCAPE '\\'`);
       orParts.push(sql`EXISTS (
         SELECT 1 FROM ${transactionSplits}
         WHERE ${transactionSplits.userId} = ${transactions.userId}
           AND ${transactionSplits.transactionId} = ${transactions.id}
-          AND CAST((${transactionSplits.amountCents}::numeric / 100) AS TEXT) LIKE ${needle} ESCAPE '\\'
+          AND printf('%.2f', ${transactionSplits.amountCents} / 100.0) LIKE ${needle} ESCAPE '\\'
       )`);
     }
 
@@ -1673,7 +1680,7 @@ export async function listTransactions(
   // SELECT — avoids fetching an empty page when the user navigates
   // past the end after adding a transaction.
   const totalRows = await db
-    .select({ count: sql<number>`COUNT(*)::int` })
+    .select({ count: sql<number>`COUNT(*)` })
     .from(transactions)
     .where(whereClause);
   const total = totalRows[0]?.count ?? 0;
@@ -1915,7 +1922,6 @@ export async function bulkAssignTransactions(
         eq(subCategories.userId, userId),
         eq(subCategories.name, input.subCategory),
       ))
-      .for('update')
       .limit(2);
     const assignment = assignments.length === 1 ? assignments[0]! : null;
 
@@ -1927,8 +1933,7 @@ export async function bulkAssignTransactions(
         subCategory: transactions.subCategory,
       })
       .from(transactions)
-      .where(and(eq(transactions.userId, userId), inArray(transactions.id, input.ids)))
-      .for('update');
+      .where(and(eq(transactions.userId, userId), inArray(transactions.id, input.ids)));
     if (ownedRows.length !== input.ids.length) {
       throw Object.assign(new Error('One or more transactions not found'), { status: 404 });
     }
@@ -1980,7 +1985,6 @@ export async function deleteTransaction(userId: string, id: string): Promise<voi
       .select({ externalId: transactions.externalId })
       .from(transactions)
       .where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
-      .for('update')
       .limit(1);
     if (!row) return;
 
@@ -2031,7 +2035,6 @@ export async function updateFullTransaction(
       .select()
       .from(transactions)
       .where(and(eq(transactions.userId, userId), eq(transactions.id, transactionId)))
-      .for('update')
       .limit(1);
     if (!parent) throw Object.assign(new Error('Transaction not found'), { status: 404 });
 
@@ -2229,7 +2232,6 @@ export async function replaceTransactionSplits(
       .select({ id: transactions.id, amountCents: transactions.amountCents })
       .from(transactions)
       .where(and(eq(transactions.userId, userId), eq(transactions.id, transactionId)))
-      .for('update')
       .limit(1);
     if (!parent) throw Object.assign(new Error('Transaction not found'), { status: 404 });
 
@@ -2467,7 +2469,6 @@ export async function addTransactionWithExternalId(
           eq(transactions.accountId, account.id),
           eq(transactions.sourcePending, true),
           eq(transactions.sourceType, tx.sourceType),
-          sql`lower(regexp_replace(btrim(${transactions.merchant}), '\\s+', ' ', 'g')) = ${normalizeMerchant(tx.merchant)}`,
           sql`abs(${tx.amountCents} - ${transactions.amountCents}) <= 10000`,
           or(
             tx.sourceTransactedAt == null
@@ -2481,13 +2482,17 @@ export async function addTransactionWithExternalId(
               tx.sourceTransactedAt == null ? sql`true` : isNull(transactions.sourceTransactedAt),
               lte(transactions.amountCents, tx.amountCents),
               sql`${tx.amountCents} * 10 <= ${transactions.amountCents} * 13`,
-              sql`${tx.date}::date BETWEEN coalesce(${transactions.sourceDate}, ${transactions.date}) - 1 AND coalesce(${transactions.sourceDate}, ${transactions.date}) + 1`,
+              sql`${tx.date} BETWEEN date(coalesce(${transactions.sourceDate}, ${transactions.date}), '-1 day') AND date(coalesce(${transactions.sourceDate}, ${transactions.date}), '+1 day')`,
             ),
           ),
         ),
       );
     const usableCandidates: typeof candidates = [];
+    // Merchant names are compared in JS: SQLite has no regex replace and
+    // its lower() folds ASCII only.
+    const merchant = normalizeMerchant(tx.merchant);
     for (const candidate of candidates) {
+      if (normalizeMerchant(candidate.transaction.merchant) !== merchant) continue;
       if (existing && candidate.transaction.id === existing.id) {
         usableCandidates.push(candidate);
         continue;
@@ -2543,8 +2548,7 @@ export async function addTransactionWithExternalId(
                 inArray(transactions.id, existingId ? [candidate.id, existingId] : [candidate.id]),
               ),
             )
-            .orderBy(asc(transactions.id))
-            .for('update');
+            .orderBy(asc(transactions.id));
           const lockedCandidate = lockedRows.find((row) => row.id === candidate.id);
           const lockedExisting = existingId ? lockedRows.find((row) => row.id === existingId) : undefined;
           if (!lockedCandidate || (existingId && !lockedExisting)) return false;
@@ -2667,7 +2671,6 @@ export async function addTransactionWithExternalId(
         .select()
         .from(transactions)
         .where(and(eq(transactions.userId, userId), eq(transactions.id, existing.id)))
-        .for('update')
         .limit(1);
       if (!current) return null;
 
@@ -2855,7 +2858,7 @@ export async function pendingReviewCount(userId: string): Promise<number> {
   const visible = ledgerVisibilityCondition(excludedIds, excludedNames);
   if (visible) conds.push(visible);
   const countRows = await db
-    .select({ count: sql<number>`COUNT(*)::int` })
+    .select({ count: sql<number>`COUNT(*)` })
     .from(transactions)
     .where(and(...conds));
   return countRows[0]?.count ?? 0;
@@ -2880,7 +2883,7 @@ export async function pendingReviewNotificationState(userId: string): Promise<Pe
     .select({
       id: transactions.id,
       createdAt: transactions.createdAt,
-      count: sql<number>`COUNT(*) OVER()::int`,
+      count: sql<number>`COUNT(*) OVER()`,
     })
     .from(transactions)
     .where(and(...conds))
@@ -3089,7 +3092,8 @@ export async function getMonthlyPaydown(userId: string, yearMonth: string): Prom
   const rows = await db
     .select()
     .from(monthlyPaydown)
-    .where(and(eq(monthlyPaydown.userId, userId), eq(monthlyPaydown.yearMonth, yearMonth)));
+    .where(and(eq(monthlyPaydown.userId, userId), eq(monthlyPaydown.yearMonth, yearMonth)))
+    .orderBy(sql`rowid`);
   return rows.map((r) => ({ accountId: r.accountId, planned: r.planned }));
 }
 
@@ -3501,7 +3505,8 @@ export interface Goal {
  */
 export async function getAllGoals(userId: string): Promise<Goal[]> {
   const [goalRows, accountRows] = await Promise.all([
-    db.select().from(goals).where(eq(goals.userId, userId)).orderBy(asc(goals.createdAt)),
+    // rowid breaks createdAt ties in creation order.
+    db.select().from(goals).where(eq(goals.userId, userId)).orderBy(asc(goals.createdAt), sql`rowid`),
     db
       .select({
         id: accounts.id,
@@ -4242,6 +4247,28 @@ export async function getAllUsers(localAuthDisabled: boolean): Promise<AdminUser
   return allUsers;
 }
 
+interface AdminRosterRow {
+  id: string;
+  role: string | null;
+  hasCredential: boolean;
+  hasOidc: boolean;
+}
+
+/** Every user with the sign-in methods that decide admin protection. */
+async function adminRoster(): Promise<AdminRosterRow[]> {
+  const rows = await sqlAll<{ id: string; role: string | null; hasCredential: number; hasOidc: number }>(sql`
+    SELECT u.id, u.role,
+      EXISTS (SELECT 1 FROM "account" a WHERE a.user_id = u.id AND a.provider_id = 'credential') AS "hasCredential",
+      EXISTS (
+        SELECT 1 FROM "account" a
+        JOIN oidc_providers p ON p.provider_id = a.provider_id AND p.is_active = 1
+        WHERE a.user_id = u.id
+      ) AS "hasOidc"
+    FROM "user" u
+  `);
+  return rows.map((row) => ({ ...row, hasCredential: row.hasCredential === 1, hasOidc: row.hasOidc === 1 }));
+}
+
 /**
  * Delete a user and all of their data. The financial tables
  * (transactions, accounts, categories, sub_categories, monthly_budgets,
@@ -4258,28 +4285,12 @@ export async function getAllUsers(localAuthDisabled: boolean): Promise<AdminUser
  */
 export async function deleteUserWithData(userId: string): Promise<{ deletedRows: number }> {
   const deletedRows = await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('cura-admin-roster'))`);
-    await tx.execute(sql`SELECT id FROM setup_state WHERE id = 1 FOR UPDATE`);
     const [state] = await tx
       .select({ localAuthDisabled: setupState.localAuthDisabled })
       .from(setupState)
       .where(eq(setupState.id, 1))
       .limit(1);
-    const roster = (await tx.execute(sql`
-      SELECT u.id, u.role,
-        EXISTS (SELECT 1 FROM "account" a WHERE a.user_id = u.id AND a.provider_id = 'credential') AS "hasCredential",
-        EXISTS (
-          SELECT 1 FROM "account" a
-          JOIN oidc_providers p ON p.provider_id = a.provider_id AND p.is_active = true
-          WHERE a.user_id = u.id
-        ) AS "hasOidc"
-      FROM "user" u
-    `)) as unknown as Array<{
-      id: string;
-      role: string | null;
-      hasCredential: boolean;
-      hasOidc: boolean;
-    }>;
+    const roster = await adminRoster();
     const target = roster.find((row) => row.id === userId);
     if (!target) throw new Error('User not found');
     const { isProtected, reason } = computeIsProtected(target, roster, state?.localAuthDisabled ?? false);
@@ -4298,12 +4309,12 @@ export async function deleteUserWithData(userId: string): Promise<{ deletedRows:
       accounts,
       settings,
     ]) {
-      const r = await tx.delete(tbl).where(eq(tbl.userId, userId));
-      n += Number(r.count ?? 0);
+      const r = await tx.delete(tbl).where(eq(tbl.userId, userId)).returning({ userId: tbl.userId });
+      n += r.length;
     }
     // Delete the user last. Cascades to session + account (auth).
-    const r = await tx.delete(authUser).where(eq(authUser.id, userId));
-    n += Number(r.count ?? 0);
+    const r = await tx.delete(authUser).where(eq(authUser.id, userId)).returning({ id: authUser.id });
+    n += r.length;
     return n;
   });
 
@@ -4330,28 +4341,12 @@ export async function updateUserRole(
   }
   const nextRole = role === 'admin' ? 'admin' : null;
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('cura-admin-roster'))`);
-    await tx.execute(sql`SELECT id FROM setup_state WHERE id = 1 FOR UPDATE`);
     const [state] = await tx
       .select({ localAuthDisabled: setupState.localAuthDisabled })
       .from(setupState)
       .where(eq(setupState.id, 1))
       .limit(1);
-    const roster = (await tx.execute(sql`
-      SELECT u.id, u.role,
-        EXISTS (SELECT 1 FROM "account" a WHERE a.user_id = u.id AND a.provider_id = 'credential') AS "hasCredential",
-        EXISTS (
-          SELECT 1 FROM "account" a
-          JOIN oidc_providers p ON p.provider_id = a.provider_id AND p.is_active = true
-          WHERE a.user_id = u.id
-        ) AS "hasOidc"
-      FROM "user" u
-    `)) as unknown as Array<{
-      id: string;
-      role: string | null;
-      hasCredential: boolean;
-      hasOidc: boolean;
-    }>;
+    const roster = await adminRoster();
     const target = roster.find((row) => row.id === userId);
     if (!target) throw new Error('User not found');
     if (target.role === 'admin' && role !== 'admin') {
@@ -4875,7 +4870,7 @@ export async function getBudgetVsActual(userId: string, yearMonth: string): Prom
 export async function countStaleSimpleFinPending(userId: string): Promise<number> {
   const cutoff = new Date(Date.now() - 7 * 86_400_000);
   const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql<number>`count(*)` })
     .from(transactions)
     .where(
       and(
@@ -4923,17 +4918,18 @@ export async function resolveRecurringTransactionMetadata(
   identity: RecurringTransactionIdentity,
 ): Promise<RecurringTransactionMetadata | null> {
   const { meta, byName } = await loadAccountLedgerMeta(userId);
-  const conditions = [
-    eq(transactions.userId, userId),
-    sql`lower(${transactions.merchant}) = lower(${identity.merchant})`,
-  ];
+  const conditions = [eq(transactions.userId, userId)];
   if (identity.type) conditions.push(eq(transactions.type, identity.type));
 
-  const rows = await db
+  // Merchant names are matched case-insensitively in JS: SQLite's lower()
+  // only folds ASCII letters.
+  const merchant = identity.merchant.toLowerCase();
+  const rows = (await db
     .select()
     .from(transactions)
     .where(and(...conditions))
-    .orderBy(desc(transactions.date), desc(transactions.createdAt), desc(transactions.id));
+    .orderBy(desc(transactions.date), desc(transactions.createdAt), desc(transactions.id)))
+    .filter((row) => row.merchant.toLowerCase() === merchant);
 
   const accountLabel = identity.account?.toLowerCase();
   for (const row of rows) {

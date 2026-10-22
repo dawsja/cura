@@ -159,7 +159,6 @@ async function mutateManualRecurring<T>(
   mutate: (items: ManualRecurring[]) => { next: ManualRecurring[]; result: T },
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-recurring:${userId}`}))`);
     const rows = await tx
       .select({ value: settings.value })
       .from(settings)
@@ -460,7 +459,6 @@ type PreferenceMutation = (preferences: RecurringPreferences) => {
 
 async function mutateRecurringPreferences(userId: string, mutate: PreferenceMutation): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cura-recurring:${userId}`}))`);
     const rows = await tx
       .select({ key: settings.key, value: settings.value })
       .from(settings)

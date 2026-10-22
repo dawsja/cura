@@ -14,7 +14,7 @@
  *   5. markBootstrapComplete() — lock and complete the setup state.
  *   6. issueBootstrapToken()   — break-glass CLI helper.
  */
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { customAlphabet } from 'nanoid';
 // Bootstrap token hashing uses Bun.password (built-in, bcrypt algorithm).
@@ -148,7 +148,6 @@ export async function bootstrapAdmin(input: {
   let createdUserId: string | null = null;
   try {
     const userId = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT id FROM setup_state WHERE id = 1 FOR UPDATE`);
       const [state] = await tx.select().from(setupState).where(eq(setupState.id, 1)).limit(1);
       if (!state || state.bootstrapCompleted || !state.needsAdmin) {
         throw new Error('admin_already_exists');
@@ -224,7 +223,6 @@ export async function configureOidc(input: {
 
   const id = `oidc-${randomBytes(8).toString('hex')}`;
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT id FROM setup_state WHERE id = 1 FOR UPDATE`);
     const [state] = await tx.select().from(setupState).where(eq(setupState.id, 1)).limit(1);
     if (!state) throw new Error('setup_state_missing');
     if (options?.requireIncompleteSetup) {
@@ -278,7 +276,6 @@ export async function configureOidc(input: {
  */
 export async function markBootstrapComplete(): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT id FROM setup_state WHERE id = 1 FOR UPDATE`);
     const [state] = await tx.select().from(setupState).where(eq(setupState.id, 1)).limit(1);
     if (!state) throw new Error('setup_state_missing');
     if (state.bootstrapCompleted) return;

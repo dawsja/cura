@@ -1,9 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { foreignKey, pgTable, text, timestamp, index, integer, unique } from 'drizzle-orm/pg-core';
+import { sqliteTable, text, integer, index, uniqueIndex, foreignKey } from 'drizzle-orm/sqlite-core';
 import { accounts } from './accounts';
 import { user } from './auth';
-import { transactionTypeEnum } from './categories';
-import { categories } from './categories';
+import { categories, transactionTypes } from './categories';
 import { subCategories } from './sub_categories';
 
 /**
@@ -18,7 +17,7 @@ import { subCategories } from './sub_categories';
  * merchant string verbatim for display. Nullable source fields are wildcards.
  * `category`, `subCategory`, and `type` are the assignment to apply.
  */
-export const rules = pgTable(
+export const rules = sqliteTable(
   'rules',
   {
     id: text('id').primaryKey(),
@@ -27,20 +26,23 @@ export const rules = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     matchType: text('match_type').notNull().default('exact'),
     matchValue: text('match_value').notNull(),
+    // Trimmed, lower-cased, with whitespace runs collapsed to one space.
+    // SQLite has no regex, so tabs and line breaks become spaces and
+    // five rounds of double-space replacement collapse runs up to 32 long.
     normalizedMatchValue: text('normalized_match_value').generatedAlwaysAs(
-      sql`lower(regexp_replace(btrim("match_value"), '\\s+', ' ', 'g'))`,
+      sql`lower(trim(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace("match_value", char(9), ' '), char(10), ' '), char(13), ' '), char(12), ' '), char(11), ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' ')))`,
     ),
     accountId: text('account_id'),
-    sourceType: transactionTypeEnum('source_type'),
+    sourceType: text('source_type', { enum: transactionTypes }),
     sourceCategory: text('source_category'),
     sourceSubCategory: text('source_sub_category'),
     category: text('category').notNull(),
     subCategory: text('sub_category'),
     categoryId: text('category_id'),
     subCategoryId: text('sub_category_id'),
-    type: transactionTypeEnum('type'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    type: text('type', { enum: transactionTypes }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
     version: integer('version').notNull().default(1),
   },
   (t) => ({
@@ -50,14 +52,17 @@ export const rules = pgTable(
     userMerchantIdx: index('idx_rules_user_merchant').on(t.userId, t.matchValue),
     userAccountIdx: index('idx_rules_user_account').on(t.userId, t.accountId),
     userCategoryAssignmentIdx: index('idx_rules_user_category_assignment').on(t.userId, t.categoryId, t.subCategoryId),
-    normalizedScopeUnique: unique('rules_user_normalized_scope_unique').on(
+    // Unscoped fields are NULL; coalesce so two rules that differ only in
+    // which fields are NULL still count as duplicates (Postgres used
+    // NULLS NOT DISTINCT for this).
+    normalizedScopeUnique: uniqueIndex('rules_user_normalized_scope_unique').on(
       t.userId,
       t.normalizedMatchValue,
-      t.accountId,
-      t.sourceType,
-      t.sourceCategory,
-      t.sourceSubCategory,
-    ).nullsNotDistinct(),
+      sql`coalesce(${t.accountId}, '')`,
+      sql`coalesce(${t.sourceType}, '')`,
+      sql`coalesce(${t.sourceCategory}, '')`,
+      sql`coalesce(${t.sourceSubCategory}, '')`,
+    ),
     tenantAccountFk: foreignKey({
       columns: [t.userId, t.accountId],
       foreignColumns: [accounts.userId, accounts.id],

@@ -1,13 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core';
+import { sqliteTable, text, integer, index, unique, foreignKey, check } from 'drizzle-orm/sqlite-core';
 import { user } from './auth';
-import { transactionTypeEnum } from './categories';
-import { categories } from './categories';
+import { categories, transactionTypes } from './categories';
 import { subCategories } from './sub_categories';
 import { transactions } from './transactions';
 
 /** Effective ledger allocations for a transaction; the parent remains the source record. */
-export const transactionSplits = pgTable(
+export const transactionSplits = sqliteTable(
   'transaction_splits',
   {
     id: text('id').primaryKey(),
@@ -15,14 +14,14 @@ export const transactionSplits = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     transactionId: text('transaction_id').notNull(),
-    amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+    amountCents: integer('amount_cents', { mode: 'number' }).notNull(),
     category: text('category').notNull(),
     subCategory: text('sub_category').notNull(),
     categoryId: text('category_id'),
     subCategoryId: text('sub_category_id'),
-    type: transactionTypeEnum('type').notNull(),
+    type: text('type', { enum: transactionTypes }).notNull(),
     sortOrder: integer('sort_order').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
   },
   (t) => ({
     userIdx: index('idx_transaction_splits_user').on(t.userId),

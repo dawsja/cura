@@ -1,15 +1,16 @@
-import { foreignKey, index, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer, index, primaryKey, foreignKey } from 'drizzle-orm/sqlite-core';
 import { transactions } from './transactions';
 
 /** Provider identities retained when a pending transaction becomes posted under a new ID. */
-export const simpleFinTransactionAliases = pgTable(
+export const simpleFinTransactionAliases = sqliteTable(
   'simplefin_transaction_aliases',
   {
     userId: text('user_id').notNull(),
     externalId: text('external_id').notNull(),
     transactionId: text('transaction_id').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
+    lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
   },
   (t) => ({
     primaryKey: primaryKey({ columns: [t.userId, t.externalId] }),

@@ -1,13 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, text, timestamp, index, foreignKey, unique, check } from 'drizzle-orm/pg-core';
+import { sqliteTable, text, integer, index, unique, foreignKey, check } from 'drizzle-orm/sqlite-core';
 import { user } from './auth';
 import { categories } from './categories';
-import { numericNumber } from './numeric-number';
+import { dollarsAsCents } from './cents';
 
 /**
  * Sub-categories — children of a main category. Cascade-deleted with the parent.
  */
-export const subCategories = pgTable(
+export const subCategories = sqliteTable(
   'sub_categories',
   {
     id: text('id').primaryKey(),
@@ -18,9 +18,9 @@ export const subCategories = pgTable(
       .notNull()
       .references(() => categories.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    planned: numericNumber('planned', { precision: 16, scale: 2 }).notNull().default(0),
+    planned: dollarsAsCents('planned').notNull().default(0),
     icon: text('icon'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
   },
   (t) => ({
     userIdx: index('idx_sub_categories_user').on(t.userId),
@@ -33,7 +33,7 @@ export const subCategories = pgTable(
     }).onDelete('cascade'),
     plannedRange: check(
       'sub_categories_planned_range',
-      sql`${t.planned} BETWEEN 0 AND 90000000000000`,
+      sql`${t.planned} BETWEEN 0 AND 9000000000000000`,
     ),
   }),
 );

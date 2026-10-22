@@ -289,18 +289,11 @@ let server: ServerType | undefined;
 let cronHandle: CronHandle | undefined;
 
 async function runStartupDemoReset(): Promise<void> {
-  for (let attempt = 1; attempt <= 120; attempt += 1) {
-    const reset = await runExclusiveJob('demo-reset', resetDemoDatabase);
-    if (reset.status === 'completed') {
-      logger.info({ result: reset.value }, 'demo: startup database reset complete');
-      return;
-    }
-    if (attempt === 1) {
-      logger.info({ reason: reset.reason }, 'demo: waiting for another replica to release the reset lock');
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+  // Cron has not started yet, so nothing else can be running the reset.
+  const reset = await runExclusiveJob('demo-reset', resetDemoDatabase);
+  if (reset.status === 'completed') {
+    logger.info({ result: reset.value }, 'demo: startup database reset complete');
   }
-  throw new Error('timed out waiting to acquire the demo reset lock during startup');
 }
 
 async function main(): Promise<void> {

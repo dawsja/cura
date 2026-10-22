@@ -1,7 +1,8 @@
 # Cura Money
 
 Self-hostable personal finance. Accounts, categories, monthly budgets,
-transactions, debt paydown calculator.
+transactions, debt paydown calculator. One container; the data is a single
+SQLite file on a Docker volume.
 
 ## Quick start
 
@@ -21,11 +22,12 @@ Published by GitHub Actions on every push to `main` and every `v*` tag.
 
 ## Updating
 
-Back up the database before updating. The app applies forward-only database
-migrations before it becomes ready, so an older image may not be compatible
-after a migration has run.
+Back up the database before updating (see [Backup and restore](#backup-and-restore)).
+The app applies forward-only database migrations before it becomes ready, so
+an older image may not be compatible after a migration has run.
 
 ```bash
+docker compose exec app bun scripts/backup.ts
 docker compose pull
 docker compose up -d
 docker compose ps
@@ -33,10 +35,51 @@ docker compose ps
 
 The app healthcheck stays unhealthy until startup migrations, setup loading,
 auth initialization, and a database readiness query succeed. Review startup
-logs after each update with `docker compose logs app`. When running multiple
-app replicas, deploy in a way that allows startup migrations to finish before
-depending on the new replicas; scheduled jobs are protected by PostgreSQL
-advisory locks and may remain enabled on every replica.
+logs after each update with `docker compose logs app`. Run one app container
+per database file; SQLite does not support several app replicas sharing it.
+
+### Upgrading from Postgres
+
+Earlier releases stored data in a separate Postgres container. Cura now keeps
+everything in one SQLite file and moves an existing install over by itself:
+users, sessions, sign-in links, transactions, budgets, rules, goals, settings,
+SimpleFIN connections, and MCP tokens all come across, so nobody has to sign
+in again or re-enter anything. Keep `DATA_ENCRYPTION_KEY` (or
+`BETTER_AUTH_SECRET`, if you never set one) unchanged.
+
+1. Replace your `docker-compose.yml` with the new one from this repository and
+   download `docker-compose.postgres-import.yml` next to it. Keep your `.env`
+   as it is; the import file reads `POSTGRES_PASSWORD` and friends from it.
+2. Start once with both files. The app copies Postgres into `/data/cura.db`,
+   checks every table, and then starts normally:
+
+   ```bash
+   docker compose pull
+   docker compose -f docker-compose.yml -f docker-compose.postgres-import.yml up -d
+   docker compose logs app | grep import:
+   ```
+
+   Look for `import: copied and verified all data from Postgres`. If the
+   copy does not match, the app stops without creating the file and Postgres
+   is untouched, so the previous image keeps working.
+3. Check the app, then start without the import file. This removes the
+   Postgres container:
+
+   ```bash
+   docker compose up -d --remove-orphans
+   ```
+
+4. The Postgres volume (`curamoney_db_data`) is kept as a fallback. Once you
+   are happy, delete it with `docker volume rm curamoney_db_data` and remove
+   the `POSTGRES_*` lines from `.env`.
+
+With your own Compose file, the same steps are: mount a volume at `/data`, set
+`DATABASE_PATH=/data/cura.db`, and keep the Postgres service and
+`DATABASE_URL` for one start. If `/data/cura.db` later goes missing while
+`DATABASE_URL` is still set, the app refuses to start instead of importing
+stale data again; mount the volume that holds the file. To deliberately copy
+Postgres again and lose every change made since, start once with
+`SQLITE_REIMPORT=true`.
 
 ### Moving from the `cura-money` image
 
@@ -70,7 +113,9 @@ Leave `DEMO_MODE` unset or set it to `false` for normal installations.
 All via `.env`. Required:
 
 - `BETTER_AUTH_SECRET` — random base64, at least 32 bytes
-- `POSTGRES_PASSWORD` — Postgres password
+
+The database is the SQLite file at `DATABASE_PATH`, which Compose sets to
+`/data/cura.db` on the `cura_data` volume.
 
 Optional at-rest encryption configuration:
 
@@ -94,8 +139,8 @@ example environment file. Use `auto` (or `true`) behind HTTPS. Existing
 installations without this setting retain their previous production default.
 
 See `.env.example` for the full list. `RUN_CRON=true` enables the hardcoded UTC
-schedules; set it to `false` to disable scheduled work. The jobs use local and
-PostgreSQL advisory locks to avoid overlapping copies. Log level and port have
+schedules; set it to `false` to disable scheduled work. A job that is still
+running is never started a second time. Log level and port have
 defaults. Configured app/auth/OIDC URLs must be HTTP(S) origins without paths.
 
 Set `TZ` to the deployment's IANA timezone, such as `America/Chicago`. Cura uses
@@ -149,7 +194,7 @@ the feature off. It is always off in `DEMO_MODE`.
 
 ### Encryption key rotation
 
-Back up both PostgreSQL and the current secrets before changing keys. Database
+Back up both the database and the current secrets before changing keys. Database
 backups contain encrypted integration credentials and cannot restore those
 credentials without the key that encrypted them. Keep required historical keys
 in a separate, protected backup alongside each database backup.
@@ -173,9 +218,9 @@ data key and discard its old value in the same deployment.
 
 The public health endpoints have different purposes:
 
-- `GET /health` is process liveness only and does not access PostgreSQL.
-- `GET /ready` performs a bounded PostgreSQL check and returns `503` while the
-  app is starting, shutting down, or unable to reach the database. Compose uses
+- `GET /health` is process liveness only and does not access the database.
+- `GET /ready` performs a bounded database check and returns `503` while the
+  app is starting, shutting down, or unable to use the database. Compose uses
   this endpoint for the app healthcheck.
 
 Requests are limited to 1 MiB. Oversized bodies receive a stable `413` JSON
@@ -184,28 +229,29 @@ structured request and error logs.
 
 ### Backup and restore
 
-Create a PostgreSQL custom-format backup and keep it outside the Compose volume:
+`scripts/backup.ts` copies the database while the app keeps running and
+checks the copy before reporting success. Backups land on the data volume, so
+copy them somewhere else as well:
 
 ```bash
-docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > cura.dump
+docker compose exec app bun scripts/backup.ts
+docker compose cp app:/data/backups/cura-20250101T000000Z.db ./
 ```
 
-To restore, stop the app so it cannot write or migrate during the restore,
-recreate an empty database, and then restore. Recreating the database is
-required because `pg_restore --clean` cannot reliably order drops when the
-currently installed schema has newer foreign-key dependencies.
+To restore, stop the app and run the restore in a one-off container. The
+current file is kept beside it as `cura.db.before-restore`:
 
 ```bash
 docker compose stop app
-docker compose exec -T db sh -c 'dropdb -U "$POSTGRES_USER" --maintenance-db=postgres --if-exists --force "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" -O "$POSTGRES_USER" "$POSTGRES_DB"'
-docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-privileges --exit-on-error' < cura.dump
-docker compose up -d app
+docker compose run --rm --no-deps --entrypoint bun app scripts/backup.ts --restore /data/backups/cura-20250101T000000Z.db
+docker compose start app
 ```
 
-Restore to the same application release that created the backup first, then
-perform normal updates so forward migrations run in order. Test backups by
-restoring them into a separate environment; a backup that has not been restored
-successfully is not verified.
+A backup taken elsewhere has to be on the volume first, for example in
+`/data/backups/`. Restore to the same application release that created the
+backup first, then perform normal updates so forward migrations run in order.
+Test backups by restoring them into a separate environment; a backup that has
+not been restored successfully is not verified.
 
 ## Features
 
@@ -215,7 +261,7 @@ successfully is not verified.
 - Debt paydown calculator: avalanche, snowball, planned
 - Optional SimpleFIN bank sync (cron-driven, every 2 hours)
 - OIDC sign-in with any OpenID Connect IdP
-- Read-only MCP server for AI assistants, with OAuth device-code sign-in
+- Read-only MCP server for AI assistants, with personal access tokens
 
 ## License
 

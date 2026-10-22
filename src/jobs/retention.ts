@@ -7,7 +7,7 @@
  * commit atomically.
  */
 import { sql } from 'drizzle-orm';
-import { db } from '@/db/client';
+import { db, sqlRun } from '@/db/client';
 import { logger } from '@/lib/logger';
 import { retentionPolicy } from '@/lib/retention';
 
@@ -16,11 +16,6 @@ export interface RetentionReport {
   days: number;
   cutoffDate: string | null;
   cutoffYearMonth: string | null;
-  transactionsDeleted: number;
-  budgetsDeleted: number;
-}
-
-interface RetentionCounts extends Record<string, unknown> {
   transactionsDeleted: number;
   budgetsDeleted: number;
 }
@@ -43,29 +38,26 @@ export async function runRetention(now: Date = new Date()): Promise<RetentionRep
     return report;
   }
 
-  const rows = await db.transaction(async (tx) => tx.execute<RetentionCounts>(sql`
-    WITH carried_budgets AS (
+  const { cutoffDate, cutoffYearMonth } = policy;
+  await db.transaction(async () => {
+    // Carry each sub-category's latest pre-cutoff budget forward to the
+    // cutoff month first, so purging history does not change what later
+    // months inherit.
+    await sqlRun(sql`
       INSERT INTO monthly_budgets (user_id, sub_category_id, year_month, planned, updated_at)
-      SELECT DISTINCT ON (user_id, sub_category_id)
-        user_id, sub_category_id, ${policy.cutoffYearMonth}, planned, NOW()
-      FROM monthly_budgets
-      WHERE year_month < ${policy.cutoffYearMonth}
-      ORDER BY user_id, sub_category_id, year_month DESC
+      SELECT user_id, sub_category_id, ${cutoffYearMonth}, planned, ${now.getTime()}
+      FROM (
+        SELECT user_id, sub_category_id, planned,
+          row_number() OVER (PARTITION BY user_id, sub_category_id ORDER BY year_month DESC) AS latest
+        FROM monthly_budgets
+        WHERE year_month < ${cutoffYearMonth}
+      )
+      WHERE latest = 1
       ON CONFLICT (user_id, sub_category_id, year_month) DO NOTHING
-      RETURNING 1
-    ), deleted_transactions AS (
-      DELETE FROM transactions WHERE date < ${policy.cutoffDate}::date RETURNING 1
-    ), deleted_budgets AS (
-      DELETE FROM monthly_budgets WHERE year_month < ${policy.cutoffYearMonth} RETURNING 1
-    )
-    SELECT
-      (SELECT count(*)::int FROM deleted_transactions) AS "transactionsDeleted",
-      (SELECT count(*)::int FROM deleted_budgets) AS "budgetsDeleted"
-    FROM (SELECT count(*) FROM carried_budgets) AS carried
-  `));
-  const deleted = rows[0];
-  report.transactionsDeleted = deleted?.transactionsDeleted ?? 0;
-  report.budgetsDeleted = deleted?.budgetsDeleted ?? 0;
+    `);
+    report.transactionsDeleted = (await sqlRun(sql`DELETE FROM transactions WHERE date < ${cutoffDate}`)).changes;
+    report.budgetsDeleted = (await sqlRun(sql`DELETE FROM monthly_budgets WHERE year_month < ${cutoffYearMonth}`)).changes;
+  });
 
   logger.info({ report }, 'retention: purged');
   return report;

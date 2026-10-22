@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, getTableColumns } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { accounts } from '@/db/schema/accounts';
 import { categories } from '@/db/schema/categories';
@@ -15,6 +15,9 @@ import { user } from '@/db/schema/auth';
 import { safe } from '@/lib/errors';
 import { retentionPolicy } from '@/lib/retention';
 import { userId } from '@/lib/tenant';
+
+// `revision` is an internal concurrency token, not part of the export format.
+const { revision: _revision, ...exportedBudgetColumns } = getTableColumns(monthlyBudgets);
 
 export const dataRoutes = new Hono();
 
@@ -60,7 +63,8 @@ dataRoutes.get(
       db.select().from(transactions).where(eq(transactions.userId, uid)).orderBy(asc(transactions.date), asc(transactions.id)),
       db.select().from(transactionSplits).where(eq(transactionSplits.userId, uid))
         .orderBy(asc(transactionSplits.transactionId), asc(transactionSplits.sortOrder)),
-      db.select().from(monthlyBudgets).where(eq(monthlyBudgets.userId, uid)).orderBy(asc(monthlyBudgets.yearMonth)),
+      db.select(exportedBudgetColumns).from(monthlyBudgets).where(eq(monthlyBudgets.userId, uid))
+        .orderBy(asc(monthlyBudgets.yearMonth)),
       db.select().from(goals).where(eq(goals.userId, uid)).orderBy(asc(goals.createdAt)),
       db.select().from(monthlyPaydown).where(eq(monthlyPaydown.userId, uid)).orderBy(asc(monthlyPaydown.yearMonth)),
       db.select().from(monthlyPaydownSnapshots).where(eq(monthlyPaydownSnapshots.userId, uid))

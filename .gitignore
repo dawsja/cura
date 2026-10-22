@@ -49,3 +49,6 @@ skills-lock.json
 
 .claude/
 .grok/
+
+# Local SQLite database (DATABASE_PATH default in development)
+data/

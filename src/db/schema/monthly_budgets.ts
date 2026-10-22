@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, text, timestamp, primaryKey, foreignKey, index, check } from 'drizzle-orm/pg-core';
+import { sqliteTable, text, integer, index, primaryKey, foreignKey, check } from 'drizzle-orm/sqlite-core';
 import { user } from './auth';
 import { subCategories } from './sub_categories';
-import { numericNumber } from './numeric-number';
+import { dollarsAsCents } from './cents';
 
 /**
  * Monthly budgets — per-sub-category planned amount, keyed by year-month.
@@ -10,7 +10,7 @@ import { numericNumber } from './numeric-number';
  * propagation" cron job in src/jobs/budget-rollforward.ts carries the
  * previous month's value forward when no explicit override is set.
  */
-export const monthlyBudgets = pgTable(
+export const monthlyBudgets = sqliteTable(
   'monthly_budgets',
   {
     userId: text('user_id')
@@ -18,8 +18,12 @@ export const monthlyBudgets = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     subCategoryId: text('sub_category_id').notNull(),
     yearMonth: text('year_month').notNull(), // 'YYYY-MM'
-    planned: numericNumber('planned', { precision: 16, scale: 2 }).notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    planned: dollarsAsCents('planned').notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
+    // Optimistic-concurrency token for "apply to future months": a random
+    // value on insert, replaced on every update by a trigger (see the
+    // SQLite migrations), so any change to the row invalidates it.
+    revision: text('revision').notNull().default(sql`(lower(hex(randomblob(8))))`),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.userId, t.subCategoryId, t.yearMonth] }),
@@ -29,10 +33,10 @@ export const monthlyBudgets = pgTable(
       foreignColumns: [subCategories.userId, subCategories.id],
       name: 'monthly_budgets_user_sub_category_fk',
     }).onDelete('cascade'),
-    yearMonthFormat: check('monthly_budgets_year_month_format', sql`${t.yearMonth} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
+    yearMonthFormat: check('monthly_budgets_year_month_format', sql`${t.yearMonth} GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]' AND substr(${t.yearMonth}, 6, 2) BETWEEN '01' AND '12'`),
     plannedRange: check(
       'monthly_budgets_planned_range',
-      sql`${t.planned} BETWEEN 0 AND 90000000000000`,
+      sql`${t.planned} BETWEEN 0 AND 9000000000000000`,
     ),
   }),
 );

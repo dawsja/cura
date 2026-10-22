@@ -8,6 +8,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A newer push to a pull request cancels its running build; pushes to main
+# queue instead, so every one is published.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -21,6 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No QEMU: every RUN step in the Dockerfile runs on the runner's own
+      # platform, and the arm64 image only copies files (see Dockerfile).
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
@@ -43,7 +51,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile

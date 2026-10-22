@@ -1,11 +1,12 @@
-import { pgEnum, pgTable, text, integer, timestamp, index, unique } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer, index, unique } from 'drizzle-orm/sqlite-core';
 import { user } from './auth';
 
 // `transfer` covers credit card payments, account-to-account moves, and
 // any other transaction where money moves between two of the user's own
 // accounts. Transfers are excluded from income/expense totals because
 // they don't change net worth — they just reallocate it.
-export const transactionTypeEnum = pgEnum('transaction_type', ['income', 'expense', 'transfer']);
+export const transactionTypes = ['income', 'expense', 'transfer'] as const;
 
 /**
  * Main categories (e.g. "Food & Dining"). Children live in `sub_categories`.
@@ -14,7 +15,7 @@ export const transactionTypeEnum = pgEnum('transaction_type', ['income', 'expens
  * main categories on the Categories page; the new order is persisted
  * and respected by the Budget page (which renders the same list).
  */
-export const categories = pgTable(
+export const categories = sqliteTable(
   'categories',
   {
     id: text('id').primaryKey(),
@@ -22,10 +23,10 @@ export const categories = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    type: transactionTypeEnum('type').notNull(),
+    type: text('type', { enum: transactionTypes }).notNull(),
     icon: text('icon'),
     sortOrder: integer('sort_order').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
   },
   (t) => ({
     userIdx: index('idx_categories_user').on(t.userId),

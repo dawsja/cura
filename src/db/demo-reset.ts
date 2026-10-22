@@ -1,6 +1,6 @@
 import { hashPassword } from 'better-auth/crypto';
 import { sql } from 'drizzle-orm';
-import { db } from './client';
+import { db, sqlAll, sqlRun } from './client';
 import {
   account,
   accounts,
@@ -139,22 +139,17 @@ export async function resetDemoDatabase(): Promise<{ users: number; transactions
   const previousMonth = monthAtOffset(-1);
 
   await db.transaction(async (tx) => {
-    // Demo mode owns this database. Include future public tables automatically,
-    // while leaving Drizzle's migration schema/history intact.
-    await tx.execute(sql.raw(`
-      DO $demo_reset$
-      DECLARE table_list text;
-      BEGIN
-        SELECT string_agg(format('%I.%I', schemaname, tablename), ', ')
-          INTO table_list
-          FROM pg_tables
-         WHERE schemaname = 'public'
-           AND tablename <> '__drizzle_migrations';
-        IF table_list IS NOT NULL THEN
-          EXECUTE 'TRUNCATE TABLE ' || table_list || ' RESTART IDENTITY CASCADE';
-        END IF;
-      END $demo_reset$;
-    `));
+    // Demo mode owns this database. Include future tables automatically,
+    // while leaving Drizzle's migration history intact. Foreign keys are
+    // checked at commit, once the fixture is back in place.
+    const tables = await sqlAll<{ name: string }>(sql`
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> '__drizzle_migrations'
+    `);
+    await sqlRun(sql`PRAGMA defer_foreign_keys = ON`);
+    for (const { name } of tables) {
+      await sqlRun(sql.raw(`DELETE FROM "${name.replaceAll('"', '""')}"`));
+    }
 
     await tx.insert(setupState).values({
       id: 1,

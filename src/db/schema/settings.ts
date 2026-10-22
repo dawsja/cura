@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, primaryKey } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
 import { user } from './auth';
 
 /**
@@ -8,7 +9,7 @@ import { user } from './auth';
  * NOTE: values are stored as text. The SimpleFIN access URL is sensitive;
  * consider encrypting it at rest before deploying to a multi-tenant host.
  */
-export const settings = pgTable(
+export const settings = sqliteTable(
   'settings',
   {
     userId: text('user_id')
@@ -16,7 +17,7 @@ export const settings = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     key: text('key').notNull(),
     value: text('value').notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(sql`(cast((julianday('now') - 2440587.5) * 86400000 as integer))`),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.userId, t.key] }),
