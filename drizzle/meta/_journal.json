@@ -253,6 +253,20 @@
       "when": 1792647029593,
       "tag": "0035_mcp_device_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792667269152,
+      "tag": "0036_drop_mcp_device_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792667278439,
+      "tag": "0037_mcp_access_tokens",
+      "breakpoints": true
     }
   ]
 }

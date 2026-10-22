@@ -16,7 +16,6 @@ const routeTitles: Record<string, string> = {
   '/rules': 'Rules',
   '/recurring': 'Recurring',
   '/settings': 'Settings',
-  '/device': 'Connect app',
 };
 
 /**

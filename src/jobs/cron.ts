@@ -10,8 +10,8 @@
  *     budget carry-forwards forward before the user opens the app.
  *   - RETENTION_CRON runs daily at 04:00 UTC (after roll-forward). It is a
  *     no-op unless the operator opts in with RETENTION_DAYS > 0.
- *   - MCP_AUTH_CLEANUP_CRON runs daily at 04:30 UTC and deletes expired
- *     MCP device requests, tokens, and revoked or abandoned grants.
+ *   - MCP_AUTH_CLEANUP_CRON runs daily at 04:30 UTC and deletes MCP access
+ *     tokens that expired more than 30 days ago.
  *
  * Every run uses local exclusion plus a session-level PostgreSQL advisory
  * lock, so replicas can safely leave cron enabled. The lock session is
@@ -23,7 +23,7 @@ import { logger } from '@/lib/logger';
 import { runSimpleFinPollForAllUsers } from './simplefin-poll';
 import { runBudgetRollforward } from './budget-rollforward';
 import { runRetention } from './retention';
-import { cleanupMcpAuth } from '@/db/mcp-auth';
+import { cleanupMcpAuth } from '@/db/mcp-access';
 import { resetDemoDatabase } from '@/db/demo-reset';
 import { env } from '@/lib/env';
 import { runExclusiveJob, waitForActiveJobs, type JobName } from './lifecycle';

@@ -217,7 +217,7 @@ export function SignIn() {
         {!showLocalForm && err && <AuthError message={err} />}
 
         {oidcList.length > 0 && (
-          <div className={showLocalForm ? 'mt-4' : undefined}>
+          <div className="flex flex-col gap-4">
             {showLocalForm && <FieldSeparator>or</FieldSeparator>}
             <div className="flex flex-col gap-2">
               {oidcList.map((provider) => (

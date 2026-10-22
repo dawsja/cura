@@ -1,7 +1,8 @@
 /**
  * /mcp — remote MCP server (Streamable HTTP transport). Mounted BEFORE the
- * guard: it authenticates with OAuth bearer access tokens from the device
- * flow in `src/routes/oauth.ts`, never with browser session cookies.
+ * guard: it authenticates with a personal access token sent as
+ * `Authorization: Bearer <token>` (created in Settings), never with browser
+ * session cookies.
  *
  * The transport runs stateless (no Mcp-Session-Id) with JSON responses: each
  * POST builds a fresh server bound to the token's user and handles exactly
@@ -10,10 +11,10 @@
  */
 import { Hono, type Context } from 'hono';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { authenticateAccessToken } from '@/db/mcp-auth';
+import { authenticateMcpAccessToken } from '@/db/mcp-access';
 import { createFinanceMcpServer } from '@/mcp/server';
 import { logger } from '@/lib/logger';
-import { MCP_SCOPE, isAllowedOrigin, isSecureTransport, mcpEnabled, protectedResourceMetadataUrl } from '@/lib/mcp-oauth';
+import { MCP_SCOPE, isAllowedOrigin, isSecureTransport, mcpEnabled } from '@/lib/mcp-access';
 
 export const mcpRoutes = new Hono();
 
@@ -21,9 +22,13 @@ function jsonRpcError(c: Context, status: 400 | 401 | 403 | 404 | 405, message: 
   return c.json({ jsonrpc: '2.0', error: { code: -32000, message }, id: null }, status);
 }
 
-/** RFC 6750 §3 challenge pointing clients at RFC 9728 discovery metadata. */
+/**
+ * RFC 6750 §3 challenge. There is no OAuth authorization server to point
+ * at: the token is created by the user in Settings and configured in the
+ * client as a header.
+ */
 function challenge(c: Context, error?: 'invalid_token' | 'insufficient_scope', description?: string): Response {
-  const parts = [`resource_metadata="${protectedResourceMetadataUrl(c.req.raw)}"`, `scope="${MCP_SCOPE}"`];
+  const parts = ['realm="cura"', `scope="${MCP_SCOPE}"`];
   if (error) parts.push(`error="${error}"`);
   if (description) parts.push(`error_description="${description}"`);
   c.header('WWW-Authenticate', `Bearer ${parts.join(', ')}`);
@@ -38,9 +43,9 @@ mcpRoutes.all('/', async (c) => {
 
   const header = c.req.header('authorization') ?? '';
   const match = /^Bearer\s+(\S+)$/i.exec(header);
-  if (!match) return challenge(c);
-  const principal = await authenticateAccessToken(match[1]!);
-  if (!principal) return challenge(c, 'invalid_token', 'the access token is invalid or expired');
+  if (!match) return challenge(c, undefined, 'send a Cura access token as a Bearer token; create one in Settings');
+  const principal = await authenticateMcpAccessToken(match[1]!);
+  if (!principal) return challenge(c, 'invalid_token', 'the access token is invalid, expired, or revoked');
   if (!principal.scope.split(' ').includes(MCP_SCOPE)) {
     return challenge(c, 'insufficient_scope', `requires ${MCP_SCOPE}`);
   }
@@ -59,7 +64,7 @@ mcpRoutes.all('/', async (c) => {
     await server.connect(transport);
     return await transport.handleRequest(c.req.raw);
   } catch (err) {
-    logger.error({ err, userId: principal.userId, grantId: principal.grantId }, 'mcp: request failed');
+    logger.error({ err, userId: principal.userId, tokenId: principal.tokenId }, 'mcp: request failed');
     return c.json({ jsonrpc: '2.0', error: { code: -32603, message: 'internal error' }, id: null }, 500);
   } finally {
     // JSON-response mode has fully buffered the reply; release the pair.

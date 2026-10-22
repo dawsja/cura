@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { Plus, Trash2, Edit3, RefreshCw, ShieldCheck, AlertTriangle, Copy, Check, KeyRound, Lock, Users, Eye, EyeOff, KeySquare, ShieldAlert, ShieldOff, Shield, Container, Coins, Bot, Unplug } from 'lucide-react';
+import { Plus, Trash2, Edit3, RefreshCw, ShieldCheck, AlertTriangle, Copy, Check, KeyRound, Lock, Users, Eye, EyeOff, KeySquare, ShieldAlert, ShieldOff, Shield, Container, Coins, Bot } from 'lucide-react';
 import clsx from 'clsx';
 import { api } from '../lib/api';
 import { fetchMe, changePassword } from '../lib/auth';
@@ -31,6 +31,7 @@ import {
 } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
 import { SUPPORTED_CURRENCIES, useCurrency } from '../lib/currency';
 import { formatMoney, timeAgo } from '../lib/format';
 import type { ApiError } from '../lib/api';
@@ -153,7 +154,7 @@ export function Settings() {
   const personal = (
     <div className="flex flex-col gap-4">
       <PreferencesSection />
-      <ConnectedAppsSection />
+      <McpAccessSection />
       <PasswordSection
         hasCredential={me.data?.user.hasCredential ?? false}
         email={me.data?.user.email ?? ''}
@@ -779,41 +780,65 @@ function PreferencesSection() {
 }
 
 // ============================================================================
-// Connected apps — MCP clients linked through the device-code flow.
+// MCP access — personal access tokens for the MCP server.
 // ============================================================================
 
-interface McpGrant {
+interface McpToken {
   id: string;
-  clientId: string;
+  name: string;
+  prefix: string;
   scope: string;
   createdAt: string;
   lastUsedAt: string | null;
+  expiresAt: string | null;
 }
 
-function ConnectedAppsSection() {
+type TokenLifetime = '30' | '90' | '365' | 'never';
+
+/** Expiry is an exact instant, so show it in the viewer's own calendar. */
+function expiryDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+const TOKEN_LIFETIMES: { value: TokenLifetime; label: string }[] = [
+  { value: '30', label: '30 days' },
+  { value: '90', label: '90 days' },
+  { value: '365', label: '1 year' },
+  { value: 'never', label: 'Never' },
+];
+
+function McpAccessSection() {
   const qc = useQueryClient();
-  const [revoking, setRevoking] = useState<McpGrant | null>(null);
-  const grants = useQuery({
-    queryKey: ['mcp-grants'],
-    queryFn: () => api.get<McpGrant[]>('/api/mcp/grants'),
+  const [creating, setCreating] = useState(false);
+  const [revoking, setRevoking] = useState<McpToken | null>(null);
+  const tokens = useQuery({
+    queryKey: ['mcp-tokens'],
+    queryFn: () => api.get<McpToken[]>('/api/mcp/tokens'),
     retry: (count, error) => (error as ApiError).status !== 404 && count < 2,
   });
   // 404 means the operator disabled the MCP server (or demo mode is on).
-  if ((grants.error as ApiError | null)?.status === 404) return null;
+  if ((tokens.error as ApiError | null)?.status === 404) return null;
 
   const mcpUrl = `${window.location.origin}/mcp`;
+  const now = Date.now();
 
   return (
     <Card className="max-w-lg">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <SectionIcon><Bot className="h-4 w-4" /></SectionIcon>
-          Connected apps
+          MCP access
         </CardTitle>
         <CardDescription>
           AI assistants and automations can read your balances, transactions, budgets, and reports through
           the Cura Money MCP server. Access is read-only.
         </CardDescription>
+        <CardAction>
+          <Button type="button" size="sm" onClick={() => setCreating(true)}>
+            <Plus data-icon="inline-start" />
+            Create token
+          </Button>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <Field>
@@ -825,69 +850,217 @@ function ConnectedAppsSection() {
             </InputGroupAddon>
           </InputGroup>
           <FieldDescription>
-            Add this URL to your app. It will show a short code; approve it at{' '}
-            <span className="font-mono text-foreground">{window.location.origin}/device</span>.
+            Add this URL to your app with the header{' '}
+            <span className="font-mono text-foreground">Authorization: Bearer &lt;token&gt;</span>, using a token
+            created here.
           </FieldDescription>
         </Field>
 
-        {grants.isLoading ? (
+        {tokens.isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Spinner /> Loading…
           </div>
-        ) : grants.isError ? (
+        ) : tokens.isError ? (
           <Alert variant="destructive">
             <AlertTriangle />
-            <AlertTitle>Could not load connected apps</AlertTitle>
+            <AlertTitle>Could not load tokens</AlertTitle>
             <AlertAction>
-              <Button type="button" size="sm" variant="outline" onClick={() => void grants.refetch()}>
+              <Button type="button" size="sm" variant="outline" onClick={() => void tokens.refetch()}>
                 Retry
               </Button>
             </AlertAction>
           </Alert>
-        ) : (grants.data ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">No apps are connected.</p>
+        ) : (tokens.data ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">No tokens yet. Create one for each app you connect.</p>
         ) : (
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
-            {grants.data!.map((grant) => (
-              <li key={grant.id} className="flex items-center gap-3 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{grant.clientId}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Connected {timeAgo(grant.createdAt)}
-                    {grant.lastUsedAt ? ` · last used ${timeAgo(grant.lastUsedAt)}` : ''}
+            {tokens.data!.map((token) => {
+              const expired = token.expiresAt !== null && new Date(token.expiresAt).getTime() <= now;
+              return (
+                <li key={token.id} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">{token.name}</span>
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">{token.prefix}…</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {token.lastUsedAt ? `Last used ${timeAgo(token.lastUsedAt)}` : 'Never used'}
+                      {' · '}
+                      {token.expiresAt === null
+                        ? 'No expiry'
+                        : expired
+                          ? `Expired ${expiryDate(token.expiresAt)}`
+                          : `Expires ${expiryDate(token.expiresAt)}`}
+                    </div>
                   </div>
-                </div>
-                <Badge variant="secondary">Read-only</Badge>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setRevoking(grant)}
-                  aria-label={`Disconnect ${grant.clientId}`}
-                >
-                  <Unplug data-icon="inline-start" />
-                  Disconnect
-                </Button>
-              </li>
-            ))}
+                  {expired ? <Badge variant="destructive">Expired</Badge> : <Badge variant="secondary">Read-only</Badge>}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setRevoking(token)}
+                    aria-label={`Revoke ${token.name}`}
+                  >
+                    <Trash2 data-icon="inline-start" />
+                    Revoke
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>
+      {creating ? (
+        <CreateMcpTokenDialog
+          mcpUrl={mcpUrl}
+          onClose={() => setCreating(false)}
+          onCreated={() => void qc.invalidateQueries({ queryKey: ['mcp-tokens'] })}
+        />
+      ) : null}
       {revoking ? (
         <ConfirmDialog
-          title={`Disconnect ${revoking.clientId}?`}
-          confirmLabel="Disconnect"
+          title={`Revoke ${revoking.name}?`}
+          confirmLabel="Revoke token"
           destructive
           onClose={() => setRevoking(null)}
           onConfirm={async () => {
-            await api.delete(`/api/mcp/grants/${encodeURIComponent(revoking.id)}`);
-            await qc.invalidateQueries({ queryKey: ['mcp-grants'] });
+            await api.delete(`/api/mcp/tokens/${encodeURIComponent(revoking.id)}`);
+            await qc.invalidateQueries({ queryKey: ['mcp-tokens'] });
           }}
         >
-          The app immediately loses access to your data. To reconnect it, you will need to approve it again.
+          Any app using this token loses access immediately. To reconnect it, create a new token.
         </ConfirmDialog>
       ) : null}
     </Card>
+  );
+}
+
+function CreateMcpTokenDialog({
+  mcpUrl,
+  onClose,
+  onCreated,
+}: {
+  mcpUrl: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const nameId = useId();
+  const [name, setName] = useState('');
+  const [lifetime, setLifetime] = useState<TokenLifetime>('365');
+  const [created, setCreated] = useState<(McpToken & { token: string }) | null>(null);
+  const create = useMutation({
+    mutationFn: () =>
+      api.post<McpToken & { token: string }>('/api/mcp/tokens', {
+        name: name.trim(),
+        expiresInDays: lifetime === 'never' ? null : Number(lifetime),
+      }),
+    onSuccess: (data) => {
+      setCreated(data);
+      onCreated();
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!name.trim() || create.isPending) return;
+    create.mutate();
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        {created ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Copy your token</DialogTitle>
+              <DialogDescription>
+                This is the only time it's shown. Store it as a secret in your app; if you lose it, revoke it and
+                create a new one.
+              </DialogDescription>
+            </DialogHeader>
+            <FieldGroup>
+              <Field>
+                <FieldLabel>Token for {created.name}</FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    readOnly
+                    value={created.token}
+                    className="font-mono text-xs"
+                    aria-label="Access token"
+                    onFocus={(event) => event.currentTarget.select()}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <CopyButton value={created.token} />
+                  </InputGroupAddon>
+                </InputGroup>
+              </Field>
+              <Field>
+                <FieldLabel>In your app</FieldLabel>
+                <FieldDescription>
+                  Server URL <span className="font-mono text-foreground">{mcpUrl}</span>, with the header{' '}
+                  <span className="font-mono text-foreground">Authorization: Bearer {created.prefix}…</span>
+                </FieldDescription>
+              </Field>
+            </FieldGroup>
+            <DialogFooter>
+              <Button type="button" onClick={onClose}>Done</Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <form onSubmit={submit} className="contents">
+            <DialogHeader>
+              <DialogTitle>Create an MCP token</DialogTitle>
+              <DialogDescription>
+                The token gives read-only access to your finances. Create one per app so you can revoke them
+                separately.
+              </DialogDescription>
+            </DialogHeader>
+            <FieldGroup>
+              <Field data-invalid={create.isError || undefined}>
+                <FieldLabel htmlFor={nameId}>Name</FieldLabel>
+                <Input
+                  id={nameId}
+                  autoFocus
+                  maxLength={60}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="Home Assistant"
+                  aria-invalid={create.isError || undefined}
+                />
+                {create.isError ? (
+                  <FieldDescription className="text-destructive">{(create.error as Error).message}</FieldDescription>
+                ) : null}
+              </Field>
+              <Field>
+                <FieldLabel>Expires after</FieldLabel>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  spacing={0}
+                  value={lifetime}
+                  onValueChange={(next) => { if (next) setLifetime(next as TokenLifetime); }}
+                  className="w-full"
+                  aria-label="Expires after"
+                >
+                  {TOKEN_LIFETIMES.map((option) => (
+                    <ToggleGroupItem key={option.value} value={option.value} className="flex-1">
+                      {option.label}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </Field>
+            </FieldGroup>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+              <Button type="submit" disabled={!name.trim() || create.isPending}>
+                {create.isPending ? <Spinner data-icon="inline-start" /> : <KeyRound data-icon="inline-start" />}
+                Create token
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -58,10 +58,6 @@ const PUBLIC_PREFIXES = [
   '/sign-up',
   '/forgot-password',
   '/reset-password',
-  // MCP device approval. The SPA sends signed-out users to /sign-in with a
-  // callbackURL so the `user_code` query survives; the approval API itself
-  // (/api/mcp/*) stays guarded.
-  '/device',
 ];
 
 function isPublic(path: string): boolean {
