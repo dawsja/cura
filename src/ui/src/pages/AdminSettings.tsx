@@ -794,6 +794,10 @@ interface McpToken {
 }
 
 type TokenLifetime = '30' | '90' | '365' | 'never';
+type TokenAccess = 'read' | 'read_write';
+
+/** Tokens created with write access carry this scope next to finance:read. */
+const canWrite = (token: McpToken) => token.scope.split(' ').includes('finance:write');
 
 /** Expiry is an exact instant, so show it in the viewer's own calendar. */
 function expiryDate(iso: string): string {
@@ -831,7 +835,8 @@ function McpAccessSection() {
         </CardTitle>
         <CardDescription>
           AI assistants and automations can read your balances, transactions, budgets, and reports through
-          the Cura Money MCP server. Access is read-only.
+          the Cura Money MCP server. Tokens with write access can also categorize transactions, work through
+          reviews, manage rules, and set budgets.
         </CardDescription>
         <CardAction>
           <Button type="button" size="sm" onClick={() => setCreating(true)}>
@@ -893,7 +898,13 @@ function McpAccessSection() {
                           : `Expires ${expiryDate(token.expiresAt)}`}
                     </div>
                   </div>
-                  {expired ? <Badge variant="destructive">Expired</Badge> : <Badge variant="secondary">Read-only</Badge>}
+                  {expired ? (
+                    <Badge variant="destructive">Expired</Badge>
+                  ) : (
+                    <Badge variant={canWrite(token) ? 'outline' : 'secondary'}>
+                      {canWrite(token) ? 'Read and write' : 'Read-only'}
+                    </Badge>
+                  )}
                   <Button
                     type="button"
                     size="sm"
@@ -947,12 +958,14 @@ function CreateMcpTokenDialog({
   const nameId = useId();
   const [name, setName] = useState('');
   const [lifetime, setLifetime] = useState<TokenLifetime>('365');
+  const [access, setAccess] = useState<TokenAccess>('read');
   const [created, setCreated] = useState<(McpToken & { token: string }) | null>(null);
   const create = useMutation({
     mutationFn: () =>
       api.post<McpToken & { token: string }>('/api/mcp/tokens', {
         name: name.trim(),
         expiresInDays: lifetime === 'never' ? null : Number(lifetime),
+        access,
       }),
     onSuccess: (data) => {
       setCreated(data);
@@ -1011,8 +1024,7 @@ function CreateMcpTokenDialog({
             <DialogHeader>
               <DialogTitle>Create an MCP token</DialogTitle>
               <DialogDescription>
-                The token gives read-only access to your finances. Create one per app so you can revoke them
-                separately.
+                Create one token per app so you can revoke them separately.
               </DialogDescription>
             </DialogHeader>
             <FieldGroup>
@@ -1030,6 +1042,27 @@ function CreateMcpTokenDialog({
                 {create.isError ? (
                   <FieldDescription className="text-destructive">{(create.error as Error).message}</FieldDescription>
                 ) : null}
+              </Field>
+              <Field>
+                <FieldLabel>Access</FieldLabel>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  spacing={0}
+                  value={access}
+                  onValueChange={(next) => { if (next) setAccess(next as TokenAccess); }}
+                  className="w-full"
+                  aria-label="Access"
+                >
+                  <ToggleGroupItem value="read" className="flex-1">Read only</ToggleGroupItem>
+                  <ToggleGroupItem value="read_write" className="flex-1">Read and write</ToggleGroupItem>
+                </ToggleGroup>
+                <FieldDescription>
+                  {access === 'read'
+                    ? 'The app can see your finances but cannot change anything.'
+                    : 'The app can also change transaction categories, review transactions, create and run rules, '
+                      + 'and set budgets, with the same checks as this app. It cannot delete transactions or accounts.'}
+                </FieldDescription>
               </Field>
               <Field>
                 <FieldLabel>Expires after</FieldLabel>

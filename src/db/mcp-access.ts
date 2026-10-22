@@ -9,7 +9,7 @@ import { and, count, desc, eq, isNotNull, lt } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from './client';
 import { mcpAccessTokens } from './schema/mcp_access_tokens';
-import { MCP_SCOPE, generateMcpAccessToken, hashSecret, tokenDisplayPrefix } from '@/lib/mcp-access';
+import { generateMcpAccessToken, scopeForAccess, type McpAccess, hashSecret, tokenDisplayPrefix } from '@/lib/mcp-access';
 import { logger } from '@/lib/logger';
 
 /** Per-user cap, so a runaway script can't fill the table. */
@@ -70,7 +70,7 @@ export async function authenticateMcpAccessToken(token: string, now = new Date()
 /** Create a token. The plaintext is returned once and never stored. */
 export async function createMcpAccessToken(
   userId: string,
-  input: { name: string; expiresAt: Date | null },
+  input: { name: string; expiresAt: Date | null; access: McpAccess },
 ): Promise<{ token: string; summary: McpTokenSummary }> {
   const [existing] = await db
     .select({ n: count() })
@@ -91,11 +91,11 @@ export async function createMcpAccessToken(
       name: input.name,
       tokenHash: hashSecret(token),
       tokenPrefix: tokenDisplayPrefix(token),
-      scope: MCP_SCOPE,
+      scope: scopeForAccess(input.access),
       expiresAt: input.expiresAt,
     })
     .returning();
-  logger.info({ userId, tokenId: row!.id, expiresAt: input.expiresAt }, 'mcp: access token created');
+  logger.info({ userId, tokenId: row!.id, scope: row!.scope, expiresAt: input.expiresAt }, 'mcp: access token created');
   return { token, summary: toSummary(row!) };
 }
 

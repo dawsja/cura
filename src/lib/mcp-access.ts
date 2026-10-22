@@ -10,8 +10,24 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { env, resolveOrigin } from './env';
 
-/** The only scope today: read-only access to the user's finances. */
-export const MCP_SCOPE = 'finance:read';
+/** Read access to the user's finances. Every token has it. */
+export const MCP_READ_SCOPE = 'finance:read';
+/**
+ * Changes made through the same rules as the web app: transaction
+ * categories, reviews, rules, budgets, and categories. Granted only when
+ * the user creates a token with read and write access.
+ */
+export const MCP_WRITE_SCOPE = 'finance:write';
+
+export type McpAccess = 'read' | 'read_write';
+
+export function scopeForAccess(access: McpAccess): string {
+  return access === 'read_write' ? `${MCP_READ_SCOPE} ${MCP_WRITE_SCOPE}` : MCP_READ_SCOPE;
+}
+
+export function hasScope(scope: string, wanted: string): boolean {
+  return scope.split(' ').includes(wanted);
+}
 
 const TOKEN_PREFIX = 'cura_';
 // Enough of the token to tell several apart in Settings without making

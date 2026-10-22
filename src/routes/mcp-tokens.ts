@@ -3,7 +3,7 @@
  * manage MCP personal access tokens. Mounted AFTER the guard.
  *
  *   GET    /tokens       → the current user's tokens (never the secrets)
- *   POST   /tokens       → { name, expiresInDays } → the new token, shown once
+ *   POST   /tokens       → { name, expiresInDays, access } → the new token, shown once
  *   DELETE /tokens/:id   → revoke a token
  */
 import { Hono } from 'hono';
@@ -19,6 +19,8 @@ const CreateTokenSchema = z.object({
   name: z.string().trim().min(1, 'Give the token a name').max(60, 'Keep the name under 60 characters'),
   // null = never expires.
   expiresInDays: z.union([z.literal(30), z.literal(90), z.literal(365), z.null()]),
+  // Read-only unless the user asks for an agent that can make changes.
+  access: z.enum(['read', 'read_write']).default('read'),
 });
 
 mcpTokenRoutes.use('*', async (c, next) => {
@@ -36,9 +38,9 @@ mcpTokenRoutes.post(
   safe(async (c) => {
     const parsed = CreateTokenSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return badRequest(c, parsed.error.issues[0]?.message ?? 'invalid input');
-    const { name, expiresInDays } = parsed.data;
+    const { name, expiresInDays, access } = parsed.data;
     const expiresAt = expiresInDays === null ? null : new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
-    const created = await createMcpAccessToken(userId(c), { name, expiresAt });
+    const created = await createMcpAccessToken(userId(c), { name, expiresAt, access });
     c.header('Cache-Control', 'no-store');
     return c.json({ token: created.token, ...created.summary }, 201);
   }),

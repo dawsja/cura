@@ -163,14 +163,32 @@ but exclude passwords, sessions, provider tokens, and integration credentials.
 Cura Money includes a remote [Model Context Protocol](https://modelcontextprotocol.io)
 server, so self-hosted assistants and automations can read a user's accounts,
 balances, transactions, budgets, goals, recurring charges, debt projections,
-and reports. All tools are read-only.
+rules, and reports. Tokens created with write access can also manage the user's
+money the way the web app does:
+
+| Web app | MCP tools |
+| --- | --- |
+| Transactions: change a category, then "Create scoped rule" | `categorize_transaction` (with `createRule`), `bulk_categorize_transactions` |
+| Review dialog | `review_transaction`, `accept_all_reviews` |
+| Rules page | `create_rule`, `create_rule_from_transaction`, `update_rule`, `delete_rule`, `run_rules` |
+| Budget page, including "Apply to future months" and Pay down rows | `set_budget`, `set_debt_payment` |
+| Pay down: "Save to Budget" | `save_debt_plan_to_budget` |
+| Categories page | `create_category`, `create_subcategory` |
+
+Write tools run the same checks as the web app. As there, changing a
+transaction never creates or edits a rule by itself, a new rule only changes
+existing transactions when it is run, and a budget amount applies to one month
+unless it is applied to future months. Write tools cannot delete transactions,
+accounts, or categories.
 
 The endpoint is `POST /mcp` (Streamable HTTP, stateless, JSON responses). Clients
 authenticate with a personal access token:
 
 1. In Cura Money, open **Settings → MCP access** and create a token. Give it a
-   name for the app it's for and choose when it expires (30 days, 90 days,
-   1 year, or never). The token is shown once; copy it then.
+   name for the app it's for, choose **Read only** or **Read and write**, and
+   choose when it expires (30 days, 90 days, 1 year, or never). The token is
+   shown once; copy it then. Read-only tokens never see the write tools, and
+   tokens created before write access existed stay read-only.
 2. In your MCP client, add the server URL `https://cura.example.com/mcp` with
    the header `Authorization: Bearer <token>`. Store the token as a secret.
 
@@ -181,7 +199,8 @@ curl -s -X POST https://cura.example.com/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Each token belongs to the user who created it and only reads that user's data.
+Each token belongs to the user who created it and only reaches that user's data.
+Every change made through a token is logged with the tool name and token id.
 Revoking a token in Settings cuts off the app immediately. Settings also shows
 when each token was last used. Tokens are stored only as a hash, are never valid
 for the regular `/api` routes, and browser sessions are not accepted at `/mcp`.
@@ -261,7 +280,7 @@ not been restored successfully is not verified.
 - Debt paydown calculator: avalanche, snowball, planned
 - Optional SimpleFIN bank sync (cron-driven, every 2 hours)
 - OIDC sign-in with any OpenID Connect IdP
-- Read-only MCP server for AI assistants, with personal access tokens
+- MCP server for AI assistants, with read-only or read-and-write personal access tokens
 
 ## License
 

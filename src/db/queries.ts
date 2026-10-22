@@ -2940,6 +2940,40 @@ export async function listReviewQueue(userId: string, opts: { limit?: number } =
   }));
 }
 
+export interface TransactionAssignment {
+  id: string;
+  merchant: string;
+  account: string;
+  type: TransactionType;
+  category: string;
+  subCategory: string | null;
+  needsReview: boolean;
+  splitCount: number;
+}
+
+/** One transaction's current assignment, for callers that edit it in place. */
+export async function getTransactionAssignment(userId: string, id: string): Promise<TransactionAssignment | null> {
+  const [row] = await db
+    .select({
+      id: transactions.id,
+      merchant: transactions.merchant,
+      account: transactions.account,
+      type: transactions.type,
+      category: transactions.category,
+      subCategory: transactions.subCategory,
+      needsReview: transactions.needsReview,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
+    .limit(1);
+  if (!row) return null;
+  const splits = await db
+    .select({ id: transactionSplits.id })
+    .from(transactionSplits)
+    .where(and(eq(transactionSplits.userId, userId), eq(transactionSplits.transactionId, id)));
+  return { ...row, type: row.type as TransactionType, splitCount: splits.length };
+}
+
 /**
  * Mark a transaction as reviewed. Optionally patch its category,
  * sub-category, and type in the same call — the carousel's "Categorize"

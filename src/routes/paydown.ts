@@ -19,11 +19,7 @@ import {
   getAccount,
   editAccountPaydown,
   getPaydownModalData,
-  syncMonthlyPaydownWithScenario,
-  syncPaydownCategories,
-  updatePaydownPlannedForMonth,
   getSavedPaydownScenario,
-  savePaydownScenario,
 } from '@/db/queries';
 import {
   emptyProjection,
@@ -35,6 +31,7 @@ import {
 import { userId, routeParam } from '@/lib/tenant';
 import { badRequest, safe } from '@/lib/errors';
 import { aprRate, moneyAmount } from '@/lib/money';
+import { saveDebtPlanToBudget, setPlannedDebtPayment } from '@/services/budget';
 
 export const paydownRoutes = new Hono();
 const YearMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'yearMonth must be YYYY-MM');
@@ -191,17 +188,7 @@ paydownRoutes.patch(
     const body = await c.req.json().catch(() => null);
     const parsed = SnapshotPlannedSchema.safeParse(body);
     if (!parsed.success) return badRequest(c, parsed.error.issues[0]?.message ?? 'invalid input');
-    // The Pay down projection never pays less than the minimum, so Budget
-    // must not plan less either — unless the balance itself is smaller,
-    // which is what Save to Budget plans for a nearly paid-off debt.
-    const existing = await getAccount(userId(c), routeParam(c, 'id'));
-    const floor = existing ? Math.min(existing.minPayment, existing.balance) : 0;
-    if (existing && existing.balance > 0 && parsed.data.planned < floor) {
-      const what = floor < existing.minPayment ? 'the balance owed' : 'the minimum payment';
-      return badRequest(c, `Planned payment must be at least ${floor.toFixed(2)} (${what})`);
-    }
-    const ok = await updatePaydownPlannedForMonth(userId(c), ym, routeParam(c, 'id'), parsed.data.planned);
-    if (!ok) return badRequest(c, 'account not found or not a liability');
+    await setPlannedDebtPayment(userId(c), { accountId: routeParam(c, 'id'), yearMonth: ym, planned: parsed.data.planned });
     return c.json({ ok: true });
   }),
 );
@@ -216,49 +203,7 @@ paydownRoutes.post(
     const body = await c.req.json().catch(() => null);
     const parsed = SyncSchema.safeParse(body);
     if (!parsed.success) return badRequest(c, parsed.error.issues[0]?.message ?? 'invalid input');
-    const { yearMonth, method, monthlyExtra, oneTimeExtra } = parsed.data;
-    const uid = userId(c);
-    const liabilityAccounts = await getLiabilityAccounts(uid);
-    const included = liabilityAccounts.filter(
-      (account) => account.includeInPaydown && (account.type === 'credit' || account.type === 'loan'),
-    );
-    const accountById = new Map(included.map((a) => [a.id, a]));
-
-    // Planned payments intentionally ignore calculator extras. Normalize
-    // them here so the saved scenario always matches the Budget result.
-    const effectiveMonthlyExtra = method === 'planned' ? 0 : monthlyExtra;
-    const effectiveOneTimeExtra = method === 'planned' ? 0 : oneTimeExtra;
-    const result = await syncMonthlyPaydownWithScenario(
-      uid,
-      yearMonth,
-      method,
-      effectiveMonthlyExtra,
-      effectiveOneTimeExtra,
-    );
-    const plannedByName: Record<string, number> = {};
-    for (const row of result.allocation) {
-      const acct = accountById.get(row.accountId);
-      if (acct) plannedByName[acct.name] = row.planned;
-    }
-    await syncPaydownCategories(uid, Object.keys(plannedByName), {
-      yearMonth,
-      plannedByName,
-    });
-    await savePaydownScenario(uid, yearMonth, {
-      method,
-      monthlyExtra: effectiveMonthlyExtra,
-      oneTimeExtra: effectiveOneTimeExtra,
-    });
-    return c.json({
-      ok: true,
-      rowCount: result.rowCount,
-      syncedAt: result.syncedAt,
-      scenario: {
-        method,
-        monthlyExtra: effectiveMonthlyExtra,
-        oneTimeExtra: effectiveOneTimeExtra,
-      },
-      snapshot: await getPaydownModalData(uid, yearMonth),
-    });
+    const saved = await saveDebtPlanToBudget(userId(c), parsed.data);
+    return c.json({ ok: true, ...saved });
   }),
 );

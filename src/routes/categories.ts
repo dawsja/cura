@@ -17,14 +17,11 @@ import {
 import { userId, routeParam } from '@/lib/tenant';
 import { badRequest, safe } from '@/lib/errors';
 import { MAX_MONEY } from '@/lib/money';
+import { MainCategoryName } from '@/lib/category-name';
 
 export const categoryRoutes = new Hono();
 
 const TxType = z.enum(['income', 'expense', 'transfer']);
-const MainCategoryName = z.string().trim().min(1).max(120).refine(
-  (name) => !/[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u20E3]/u.test(name),
-  'Main category names cannot contain emoji',
-);
 
 const AddMainSchema = z.object({
   name: MainCategoryName,

@@ -1,5 +1,6 @@
 /**
- * Read-only MCP tool surface over one user's finances.
+ * MCP tool surface over one user's finances: read tools for every token,
+ * plus the write tools in `./write-tools.ts` for tokens with the write scope.
  *
  * A fresh server is built per request (the HTTP transport is stateless) and
  * closes over the authenticated `userId`, so every tool is tenant-scoped by
@@ -7,13 +8,11 @@
  * REST API; every result carries the user's display `currency` code.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import {
   getAllAccounts,
   getAllCategories,
   getAllGoals,
-  getBudgetActivity,
   getCashFlowSeries,
   getDashboardActivity,
   getLiabilityAccounts,
@@ -24,102 +23,43 @@ import {
   getSpendingPace,
   getTopMerchants,
   listReviewQueue,
+  listRules,
   listTransactions,
   netWorthContributionForAccount,
   pendingReviewCount,
   type TransactionFilters,
 } from '@/db/queries';
-import { latestBudgetsUpTo } from '@/db/budget-repository';
 import { DISPLAY_CURRENCY_KEY, resolveCurrency } from '@/lib/currency';
-import { env } from '@/lib/env';
-import { logger } from '@/lib/logger';
 import { centsToDollars, dollarsToCents, moneyAmount } from '@/lib/money';
 import { emptyProjection, projectPaydown, toPaydownAccount, type PaydownParams } from '@/lib/paydown';
 import { ReportRange, resolveReportRange } from '@/lib/report-range';
 import { loadActiveRecurringCharges, recurringSchedule } from '@/services/recurring';
+import { buildBudgetView } from './budget-view';
+import { CalendarDate, READ_ONLY, YearMonth, currentYearMonth, defineTool, run, type McpContext } from './tool-kit';
+import { registerWriteTools } from './write-tools';
 
-const SERVER_VERSION = '1.0.0';
-const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
+const SERVER_VERSION = '1.1.0';
 
-const YearMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'must be YYYY-MM');
-const CalendarDate = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, 'must be YYYY-MM-DD');
+const READ_INSTRUCTIONS =
+  'Access to one Cura Money user\'s personal finances. Amounts are in major currency units '
+  + '(e.g. dollars) of the `currency` field. Transaction types are income, expense, and transfer; transfers '
+  + 'move money between the user\'s own accounts and are excluded from income/expense totals. Account '
+  + 'balances are reported as positive magnitudes; credit and loan accounts are liabilities.';
 
-/** Current ledger month in the deployment timezone. */
-function currentYearMonth(now = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: env.TZ, year: 'numeric', month: '2-digit' })
-    .format(now)
-    .slice(0, 7);
-}
+const WRITE_INSTRUCTIONS =
+  ' This token can also make changes, through the same rules as the web app. Categories are always a main '
+  + 'category plus one of its sub-categories (see list_categories), and the transaction type must match the '
+  + 'category\'s type except for "Pay down goals". Changing a transaction\'s category never creates or edits '
+  + 'a rule by itself; pass createRule or call create_rule_from_transaction when the user wants future imports '
+  + 'handled the same way. Rules only change existing transactions when run with run_rules. Prefer '
+  + 'review_transaction for items from list_pending_reviews. Budget amounts apply to one month unless '
+  + 'applyToFutureMonths is true. Confirm with the user before bulk changes or deleting a rule.';
 
-function toolResult(data: Record<string, unknown>): CallToolResult {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
-    structuredContent: data,
-  };
-}
-
-function toolError(message: string): CallToolResult {
-  return { content: [{ type: 'text', text: message }], isError: true };
-}
-
-/**
- * Data-layer errors carrying a 4xx `status` are user-facing (bad filter,
- * unknown id); anything else is logged and reported generically.
- */
-function run<A>(name: string, userId: string, fn: (args: A) => Promise<Record<string, unknown>>) {
-  return async (args: A): Promise<CallToolResult> => {
-    try {
-      return toolResult(await fn(args));
-    } catch (err) {
-      const status = (err as { status?: unknown }).status;
-      if (typeof status === 'number' && status >= 400 && status < 500) {
-        return toolError((err as Error).message || 'request failed');
-      }
-      logger.error({ err, tool: name, userId }, 'mcp: tool failed');
-      return toolError('internal error while running this tool');
-    }
-  };
-}
-
-interface ToolConfig<S extends z.ZodRawShape> {
-  title: string;
-  description: string;
-  inputSchema?: S;
-  annotations: ToolAnnotations;
-}
-
-type RegisterTool = (
-  name: string,
-  config: ToolConfig<z.ZodRawShape>,
-  handler: (args: unknown) => Promise<CallToolResult>,
-) => void;
-
-/**
- * Typed front for `McpServer.registerTool`. The SDK's own signature infers
- * across zod v3 and v4 shapes, which makes `tsc` exhaust memory with this
- * many tools; inferring from our zod v3 shape here keeps checking cheap.
- * The SDK still validates arguments against `inputSchema` at runtime.
- */
-function defineTool<S extends z.ZodRawShape>(
-  server: McpServer,
-  name: string,
-  config: ToolConfig<S>,
-  handler: (args: z.infer<z.ZodObject<S>>) => Promise<CallToolResult>,
-): void {
-  const register = server.registerTool.bind(server) as unknown as RegisterTool;
-  register(name, config, (args) => handler(args as z.infer<z.ZodObject<S>>));
-}
-
-export function createFinanceMcpServer(userId: string): McpServer {
+export function createFinanceMcpServer(ctx: McpContext): McpServer {
+  const { userId } = ctx;
   const server = new McpServer(
     { name: 'cura', title: 'Cura Money', version: SERVER_VERSION },
-    {
-      instructions:
-        'Read-only access to one Cura Money user\'s personal finances. Amounts are in major currency units '
-        + '(e.g. dollars) of the `currency` field. Transaction types are income, expense, and transfer; transfers '
-        + 'move money between the user\'s own accounts and are excluded from income/expense totals. Account '
-        + 'balances are reported as positive magnitudes; credit and loan accounts are liabilities.',
-    },
+    { instructions: ctx.canWrite ? READ_INSTRUCTIONS + WRITE_INSTRUCTIONS : READ_INSTRUCTIONS },
   );
   const currency = async () => resolveCurrency(await getSetting(userId, DISPLAY_CURRENCY_KEY));
 
@@ -133,7 +73,7 @@ export function createFinanceMcpServer(userId: string): McpServer {
         + 'awaiting review. A good first call.',
       annotations: READ_ONLY,
     },
-    run('get_financial_overview', userId, async () => {
+    run('get_financial_overview', ctx, async () => {
       const [accounts, activity, pendingReviews, cur, lastSync] = await Promise.all([
         getAllAccounts(userId),
         getDashboardActivity(userId),
@@ -173,7 +113,7 @@ export function createFinanceMcpServer(userId: string): McpServer {
       inputSchema: { includeHidden: z.boolean().optional().describe('Include accounts the user has hidden.') },
       annotations: READ_ONLY,
     },
-    run('list_accounts', userId, async ({ includeHidden }) => {
+    run('list_accounts', ctx, async ({ includeHidden }) => {
       const [accounts, cur] = await Promise.all([getAllAccounts(userId, { includeHidden }), currency()]);
       return {
         currency: cur,
@@ -222,7 +162,7 @@ export function createFinanceMcpServer(userId: string): McpServer {
       inputSchema: SearchInput,
       annotations: READ_ONLY,
     },
-    run('search_transactions', userId, async (args) => {
+    run('search_transactions', ctx, async (args) => {
       const filters: TransactionFilters = {
         q: args.query,
         fromDate: args.fromDate,
@@ -255,6 +195,10 @@ export function createFinanceMcpServer(userId: string): McpServer {
           account: t.account,
           accountId: t.accountId ?? null,
           notes: t.notes ?? null,
+          // What the bank import said; scoped rules match on it.
+          source: t.sourceClassificationTrusted
+            ? { type: t.sourceType, category: t.sourceCategory, subCategory: t.sourceSubCategory ?? null }
+            : null,
           splits: t.splits?.map((s) => ({
             amount: s.amount,
             type: s.type,
@@ -271,17 +215,20 @@ export function createFinanceMcpServer(userId: string): McpServer {
     'list_categories',
     {
       title: 'List categories',
-      description: 'Main categories (income, expense, transfer) with their sub-categories and default planned budget amounts.',
+      description:
+        'Main categories (income, expense, transfer) with their sub-categories and default planned budget amounts. '
+        + 'Transactions, rules, and budgets always use a main category plus one of its sub-categories.',
       annotations: READ_ONLY,
     },
-    run('list_categories', userId, async () => {
+    run('list_categories', ctx, async () => {
       const [categories, cur] = await Promise.all([getAllCategories(userId), currency()]);
       return {
         currency: cur,
         categories: categories.map((c) => ({
+          id: c.id,
           name: c.name,
           type: c.type,
-          subCategories: c.subCategories.map((s) => ({ name: s.name, defaultPlanned: s.planned })),
+          subCategories: c.subCategories.map((s) => ({ id: s.id, name: s.name, defaultPlanned: s.planned })),
         })),
       };
     }),
@@ -293,49 +240,22 @@ export function createFinanceMcpServer(userId: string): McpServer {
     {
       title: 'Monthly budget',
       description:
-        'Planned vs. actual for every income and expense sub-category in a month, with totals. '
-        + 'Defaults to the current month.',
-      inputSchema: { month: YearMonth.optional().describe('YYYY-MM; defaults to the current month.') },
+        'The Budget page for a month: planned vs. actual for every income and expense sub-category (income as one '
+        + 'group, one group per expense category), planned debt payments from Pay down, and the totals including '
+        + 'Left to budget (planned income minus planned expenses and debt payments). Each line has the '
+        + 'subCategoryId that set_budget takes. Defaults to the current month.',
+      inputSchema: {
+        month: YearMonth.optional().describe('YYYY-MM; defaults to the current month.'),
+        hideUnbudgeted: z.boolean().optional().describe('Leave out lines with nothing planned and nothing spent, like the page toggle.'),
+      },
       annotations: READ_ONLY,
     },
-    run('get_budget', userId, async ({ month }) => {
-      const ym = month ?? currentYearMonth();
-      const [categories, overrides, activity, cur] = await Promise.all([
-        getAllCategories(userId),
-        latestBudgetsUpTo(userId, ym),
-        getBudgetActivity(userId, ym),
+    run('get_budget', ctx, async ({ month, hideUnbudgeted }) => {
+      const [view, cur] = await Promise.all([
+        buildBudgetView(userId, month ?? currentYearMonth(), { hideUnbudgeted }),
         currency(),
       ]);
-      const actualByKey = new Map(activity.rows.map((r) => [`${r.category}\u0000${r.subCategory}`, r.actual]));
-      const totals = { income: { planned: 0, actual: 0 }, expense: { planned: 0, actual: 0 } };
-      const lines: Array<{ category: string; subCategory: string; type: 'income' | 'expense'; planned: number; actual: number; remaining: number }> = [];
-      for (const c of categories) {
-        // Transfers are budget-neutral moves between the user's own accounts.
-        if (c.type === 'transfer') continue;
-        for (const s of c.subCategories) {
-          const plannedCents = dollarsToCents(overrides.get(s.id) ?? s.planned);
-          const actualCents = dollarsToCents(actualByKey.get(`${c.name}\u0000${s.name}`) ?? 0);
-          totals[c.type].planned += plannedCents;
-          totals[c.type].actual += actualCents;
-          lines.push({
-            category: c.name,
-            subCategory: s.name,
-            type: c.type,
-            planned: centsToDollars(plannedCents),
-            actual: centsToDollars(actualCents),
-            remaining: centsToDollars(plannedCents - actualCents),
-          });
-        }
-      }
-      return {
-        currency: cur,
-        month: ym,
-        totals: {
-          income: { planned: centsToDollars(totals.income.planned), actual: centsToDollars(totals.income.actual) },
-          expense: { planned: centsToDollars(totals.expense.planned), actual: centsToDollars(totals.expense.actual) },
-        },
-        lines,
-      };
+      return { currency: cur, ...view };
     }),
   );
 
@@ -364,7 +284,7 @@ export function createFinanceMcpServer(userId: string): McpServer {
       },
       annotations: READ_ONLY,
     },
-    run('get_report', userId, async (args) => {
+    run('get_report', ctx, async (args) => {
       const cur = await currency();
       if (args.report === 'spending_by_category' || args.report === 'spending_pace') {
         const month = args.month ?? currentYearMonth();
@@ -394,7 +314,7 @@ export function createFinanceMcpServer(userId: string): McpServer {
       description: 'Savings goals with target, starting value, and the live balance of the account each goal tracks.',
       annotations: READ_ONLY,
     },
-    run('list_goals', userId, async () => {
+    run('list_goals', ctx, async () => {
       const [goals, cur] = await Promise.all([getAllGoals(userId), currency()]);
       return { currency: cur, goals };
     }),
@@ -410,7 +330,7 @@ export function createFinanceMcpServer(userId: string): McpServer {
         + 'and the next expected date.',
       annotations: READ_ONLY,
     },
-    run('list_recurring_charges', userId, async () => {
+    run('list_recurring_charges', ctx, async () => {
       const [charges, cur] = await Promise.all([loadActiveRecurringCharges(userId), currency()]);
       return {
         currency: cur,
@@ -435,7 +355,7 @@ export function createFinanceMcpServer(userId: string): McpServer {
       },
       annotations: READ_ONLY,
     },
-    run('get_debt_paydown_projection', userId, async (args) => {
+    run('get_debt_paydown_projection', ctx, async (args) => {
       const params: PaydownParams = {
         method: args.method ?? 'planned',
         monthlyExtra: args.monthlyExtra ?? 0,
@@ -451,6 +371,39 @@ export function createFinanceMcpServer(userId: string): McpServer {
 
   defineTool(
     server,
+    'list_rules',
+    {
+      title: 'Categorization rules',
+      description:
+        'Rules that categorize imported transactions. A rule matches the merchant (exact or prefix, ignoring case '
+        + 'and spacing) and, when set, the account and the type/category the bank import assigned; the most specific '
+        + 'match wins. `version` is needed to update a rule.',
+      annotations: READ_ONLY,
+    },
+    run('list_rules', ctx, async () => {
+      const [rules, accounts] = await Promise.all([listRules(userId), getAllAccounts(userId, { includeHidden: true })]);
+      const accountName = new Map(accounts.map((a) => [a.id, a.alias || a.name]));
+      return {
+        rules: rules.map((r) => ({
+          id: r.id,
+          version: r.version,
+          matchValue: r.matchValue,
+          accountId: r.accountId ?? null,
+          account: r.accountId ? accountName.get(r.accountId) ?? null : null,
+          sourceType: r.sourceType ?? null,
+          sourceCategory: r.sourceCategory ?? null,
+          sourceSubCategory: r.sourceSubCategory ?? null,
+          category: r.category,
+          subCategory: r.subCategory ?? null,
+          type: r.type ?? null,
+          updatedAt: r.updatedAt.toISOString(),
+        })),
+      };
+    }),
+  );
+
+  defineTool(
+    server,
     'list_pending_reviews',
     {
       title: 'Transactions awaiting review',
@@ -458,7 +411,7 @@ export function createFinanceMcpServer(userId: string): McpServer {
       inputSchema: { limit: z.number().int().min(1).max(200).optional().describe('Default 50.') },
       annotations: READ_ONLY,
     },
-    run('list_pending_reviews', userId, async ({ limit }) => {
+    run('list_pending_reviews', ctx, async ({ limit }) => {
       const [transactions, total, cur] = await Promise.all([
         listReviewQueue(userId, { limit: limit ?? 50 }),
         pendingReviewCount(userId),
@@ -468,5 +421,6 @@ export function createFinanceMcpServer(userId: string): McpServer {
     }),
   );
 
+  if (ctx.canWrite) registerWriteTools(server, ctx);
   return server;
 }

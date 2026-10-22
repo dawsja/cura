@@ -4,6 +4,9 @@
  * `Authorization: Bearer <token>` (created in Settings), never with browser
  * session cookies.
  *
+ * Tools that change data are only listed for tokens with the write scope;
+ * read-only tokens never see them.
+ *
  * The transport runs stateless (no Mcp-Session-Id) with JSON responses: each
  * POST builds a fresh server bound to the token's user and handles exactly
  * one JSON-RPC message or batch. There is no server-initiated traffic, so
@@ -14,7 +17,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { authenticateMcpAccessToken } from '@/db/mcp-access';
 import { createFinanceMcpServer } from '@/mcp/server';
 import { logger } from '@/lib/logger';
-import { MCP_SCOPE, isAllowedOrigin, isSecureTransport, mcpEnabled } from '@/lib/mcp-access';
+import { MCP_READ_SCOPE, MCP_WRITE_SCOPE, hasScope, isAllowedOrigin, isSecureTransport, mcpEnabled } from '@/lib/mcp-access';
 
 export const mcpRoutes = new Hono();
 
@@ -28,7 +31,7 @@ function jsonRpcError(c: Context, status: 400 | 401 | 403 | 404 | 405, message: 
  * client as a header.
  */
 function challenge(c: Context, error?: 'invalid_token' | 'insufficient_scope', description?: string): Response {
-  const parts = ['realm="cura"', `scope="${MCP_SCOPE}"`];
+  const parts = ['realm="cura"', `scope="${MCP_READ_SCOPE}"`];
   if (error) parts.push(`error="${error}"`);
   if (description) parts.push(`error_description="${description}"`);
   c.header('WWW-Authenticate', `Bearer ${parts.join(', ')}`);
@@ -46,8 +49,8 @@ mcpRoutes.all('/', async (c) => {
   if (!match) return challenge(c, undefined, 'send a Cura access token as a Bearer token; create one in Settings');
   const principal = await authenticateMcpAccessToken(match[1]!);
   if (!principal) return challenge(c, 'invalid_token', 'the access token is invalid, expired, or revoked');
-  if (!principal.scope.split(' ').includes(MCP_SCOPE)) {
-    return challenge(c, 'insufficient_scope', `requires ${MCP_SCOPE}`);
+  if (!hasScope(principal.scope, MCP_READ_SCOPE)) {
+    return challenge(c, 'insufficient_scope', `requires ${MCP_READ_SCOPE}`);
   }
 
   if (c.req.method !== 'POST') {
@@ -55,7 +58,11 @@ mcpRoutes.all('/', async (c) => {
     return jsonRpcError(c, 405, 'method not allowed; this server is stateless and only accepts POST');
   }
 
-  const server = createFinanceMcpServer(principal.userId);
+  const server = createFinanceMcpServer({
+    userId: principal.userId,
+    tokenId: principal.tokenId,
+    canWrite: hasScope(principal.scope, MCP_WRITE_SCOPE),
+  });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
