@@ -35,13 +35,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # The repository was renamed from cura-money. Builds are also
-          # published under the old image name so installs that still pull
-          # ghcr.io/dawsja/cura-money keep receiving updates (and the in-app
-          # update notice) until they switch. Drop it after a few releases.
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-            ${{ env.REGISTRY }}/dawsja/cura-money
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=sha,format=short

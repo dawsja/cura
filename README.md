@@ -44,10 +44,8 @@ The repository was renamed from `dawsja/cura-money` to `dawsja/cura`, and the
 image is now `ghcr.io/dawsja/cura`. If your `docker-compose.yml` still says
 `image: ghcr.io/dawsja/cura-money:latest`, change it to
 `image: ghcr.io/dawsja/cura:latest`, then update as above. Nothing else
-changes: the database, `.env`, and volumes are reused as they are.
-
-Builds are still published under the old name for a while, so an install that
-hasn't switched keeps receiving updates until you change it.
+changes: the database, `.env`, and volumes are reused as they are. The old
+image name no longer receives updates.
 
 ## Configuration
 
