@@ -2,28 +2,31 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Class-based dark mode lets the saved preference override the OS while
- * `system` keeps following prefers-color-scheme. */
+/* Cura is dark only. `<html class="dark">` is set statically so any
+ * third-party `dark:` styles resolve; app code uses the single palette. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
  * ============================================================================
- * GITHUB LIGHT/DARK + GREEN CTA
+ * DARK ONLY + GREEN CTA
  * ============================================================================
  *
  * Single source of truth for the app's palette. Every Tailwind color scale
  * (slate / amber / emerald / rose / sky / violet) is wired through a CSS
- * variable on `:root`; `.dark` swaps the complete palette.
+ * variable on `:root`. There is no light palette.
  *
- * Surfaces mirror GitHub Dark's primer palette (canvas/overlay hierarchy
- * + syntax accents):
+ * Surfaces sit a step darker than GitHub Dark. Cards are separated from the
+ * page by hairline borders rather than by a grey fill:
  *
- *   #0d1117  Main canvas (color-canvas-default)
- *   #161b22  Secondary canvas (color-canvas-subtle)
- *   #21262d  Overlay / elevated (color-canvas-overlay)
- *   #30363d  Border
- *   #c9d1d9  Primary text
- *   #8b949e  Secondary text
+ *   #07090d  Inset (text fields)
+ *   #0a0d12  Page canvas
+ *   #0f1419  Card surface
+ *   #151b23  Elevated (menus, popovers, dialogs, sheets)
+ *   #171e27  Subtle (hover rows, table heads, segmented tracks)
+ *   #1f2731  Accent (highlighted menu items, pressed toggles)
+ *   #1f2630  Hairline border
+ *   #e6edf3  Primary text
+ *   #9198a1  Secondary text
  *
  *   #22c55e  Green CTA              (Tailwind `amber-*` scale — vivid fresh green)
  *   #3fb950  Success green          (Tailwind `emerald-*` scale)
@@ -42,10 +45,6 @@
  *   - amber = vivid Tailwind green-500 (#22c55e) → the brand CTA
  *   - emerald = GitHub Primer green (#3fb950) → success / "all good"
  * They share the green family but stay visually distinguishable.
- *
- * The light palette uses dimmed, low-chroma blue-gray surfaces to reduce
- * glare while keeping financial data calm and legible. The dark palette
- * retains the established GitHub Dark surfaces and role-driven accents.
  *
  * Orange (#ffa657) is NOT a Tailwind `orange-*` scale — only
  * `--chart-orange` for Recharts.
@@ -114,194 +113,19 @@
 }
 
 /*
- * ── Light palette tokens ────────────────────────────────────────────
- * Cool-neutral canvases reduce glare without using pure white surfaces.
- * Green stays the primary brand action.
+ * ── Palette tokens (dark only) ──────────────────────────────────────
+ * Cura ships a single dark theme. Neutrals sit a step below GitHub Dark:
+ * a near-black page, cards barely lifted off it and separated by hairline
+ * borders, and a slightly brighter elevated tier for menus, popovers,
+ * dialogs and sheets. Green stays the primary brand action.
  */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
   /* Mobile app geometry. These stay separate from the palette so the
      shell can account for notches and the home indicator consistently. */
   --app-header-height: 5rem;
   --app-tab-height: 4.25rem;
-
-  /* Slate — cool blue-gray neutral ramp. */
-  --mp-slate-50:  #e3e8ec;
-  --mp-slate-100: #d7dee4;
-  --mp-slate-200: #c7d0d7;
-  --mp-slate-300: #adb9c2;
-  --mp-slate-400: #59636e;
-  --mp-slate-500: #53606b;
-  --mp-slate-600: #4f5d68;
-  --mp-slate-700: #424a53;
-  --mp-slate-800: #25292e;
-  --mp-slate-900: #0d1117;
-
-  /* Amber = Green primary CTA. */
-  --mp-amber-50:  #dcebe1;
-  --mp-amber-100: #c9e2d1;
-  --mp-amber-200: #add6ba;
-  --mp-amber-300: #78bd8d;
-  --mp-amber-400: #4ade80;
-  --mp-amber-500: #22c55e;
-  --mp-amber-600: #16a34a;
-  --mp-amber-700: #116329;
-  --mp-amber-800: #0d4f22;
-  --mp-amber-900: #14532d;
-
-  --mp-emerald-50:  #dcebe1;
-  --mp-emerald-100: #c9e2d1;
-  --mp-emerald-300: #78bd8d;
-  --mp-emerald-400: #4ade80;
-  --mp-emerald-500: #22c55e;
-  --mp-emerald-600: #116329;
-  --mp-emerald-700: #0d4f22;
-  --mp-emerald-900: #063d1b;
-
-  --mp-rose-50:  #f1dedc;
-  --mp-rose-100: #eacbc8;
-  --mp-rose-300: #dc9995;
-  --mp-rose-400: #d66f72;
-  --mp-rose-500: #e5484d;
-  --mp-rose-600: #b4232b;
-  --mp-rose-700: #a40e26;
-  --mp-rose-900: #460809;
-
-  --mp-sky-50:  #eee5c5;
-  --mp-sky-100: #e3d39a;
-  --mp-sky-300: #c2a34b;
-  --mp-sky-500: #bf8700;
-  --mp-sky-700: #765000;
-  --mp-sky-900: #573a00;
-
-  --mp-violet-600: #8250df;
-
-  /* Chart palette */
-  --chart-grid: #c7d0d7;
-  --chart-axis: #4f5d68;
-  --chart-tooltip-bg: #e9edf0;
-  --chart-tooltip-border: #b8c3cb;
-  --chart-tooltip-fg: #20262c;
-  --chart-tooltip-muted: #4f5d68;
-  --chart-total: #25292e;
-  --chart-baseline: #116329;
-  --chart-orange: #bc4c00;
-  --chart-income: #116329;
-  --chart-expense: #b4232b;
-  --chart-net: #765000;
-  --chart-comparison: #53606b;
-  --chart-merchant: #8250df;
-  --chart-net-worth-positive: #765000;
-  --chart-net-worth-negative: #b4232b;
-  --chart-category-1: #765000;
-  --chart-category-2: #116329;
-  --chart-category-3: #b4232b;
-  --chart-category-4: #0550ae;
-  --chart-category-5: #8250df;
-  --chart-category-6: #953800;
-  --chart-category-7: #0a6b6b;
-  --chart-category-8: #53606b;
-  --chart-excluded: #657783;
-
-  /* Semantic surfaces / text / borders */
-  --fg-primary: #20262c;
-  --fg-secondary: #43515c;
-  --fg-tertiary: #485661;
-  --fg-muted: #4f5d68;
-  --bg-surface: #e9edf0;
-  --bg-canvas-subtle: #cfd8df;
-  --bg-page: #d9e0e5;
-  --border-default: #b8c3cb;
-  --border-strong: #96a5b0;
-  --border-control: #657783;
-  --focus-ring: #116329;
-  --coffee-accent: #8b5e34;
-
-  /* shadcn tokens mapped onto Cura semantic surfaces so primitives
-     pick up the existing palette instead of Nova's default neutrals. */
-  --background: var(--bg-page);
-  --foreground: var(--fg-primary);
-  --card: var(--bg-surface);
-  --card-foreground: var(--fg-primary);
-  --popover: var(--bg-surface);
-  --popover-foreground: var(--fg-primary);
-  --primary: var(--mp-amber-500);
-  --primary-foreground: var(--mp-slate-900);
-  --secondary: var(--bg-canvas-subtle);
-  --secondary-foreground: var(--fg-primary);
-  --muted: var(--bg-canvas-subtle);
-  --muted-foreground: var(--fg-muted);
-  --accent: var(--mp-amber-50);
-  --accent-foreground: var(--mp-amber-700);
-  --destructive: var(--mp-rose-600);
-  --border: var(--border-default);
-  --input: var(--border-control);
-  --ring: var(--focus-ring);
-  --chart-1: var(--chart-category-1);
-  --chart-2: var(--chart-category-2);
-  --chart-3: var(--chart-category-3);
-  --chart-4: var(--chart-category-4);
-  --chart-5: var(--chart-category-5);
-  --radius: 0.5rem;
-  --sidebar: var(--bg-page);
-  --sidebar-foreground: var(--fg-primary);
-  --sidebar-primary: var(--mp-amber-500);
-  --sidebar-primary-foreground: var(--mp-slate-900);
-  --sidebar-accent: var(--mp-amber-50);
-  --sidebar-accent-foreground: var(--mp-amber-700);
-  --sidebar-border: var(--border-default);
-  --sidebar-ring: var(--focus-ring);
-}
-
-/* Portal dialogs sit outside #root so the application can be inert while a
- * modal remains interactive. Insets account for notches and home indicators. */
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  padding-top: max(1rem, env(safe-area-inset-top));
-  padding-right: max(1rem, env(safe-area-inset-right));
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
-  padding-left: max(1rem, env(safe-area-inset-left));
-  background: rgb(0 0 0 / 0.4);
-}
-
-.dialog-overlay--centered {
-  align-items: center;
-  justify-content: center;
-}
-
-.dialog-overlay--bottom-sheet {
-  align-items: flex-end;
-  justify-content: center;
-  padding-top: max(1rem, env(safe-area-inset-top));
-  padding-right: env(safe-area-inset-right);
-  padding-bottom: 0;
-  padding-left: env(safe-area-inset-left);
-}
-
-.dialog-content {
-  max-height: calc(100dvh - max(1rem, env(safe-area-inset-top)) - max(1rem, env(safe-area-inset-bottom)) - 2rem);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.dialog-overlay--bottom-sheet > .dialog-content {
-  max-height: calc(100dvh - max(1rem, env(safe-area-inset-top)));
-}
-
-.dialog-overlay--dim {
-  background: rgb(0 0 0 / 0.6);
-}
-
-.dialog-overlay--onboarding {
-  background: rgb(0 0 0 / 0.7);
-}
-
-/* Dark palette preserves the original GitHub Dark-inspired visual state. */
-.dark {
-  color-scheme: dark;
 
   --mp-slate-50: #f6f8fa;
   --mp-slate-100: #eaeef2;
@@ -351,13 +175,13 @@
   --mp-sky-900: #573a00;
   --mp-violet-600: #d2a8ff;
 
-  --chart-grid: #30363d;
-  --chart-axis: #8b949e;
-  --chart-tooltip-bg: #161b22;
-  --chart-tooltip-border: #30363d;
-  --chart-tooltip-fg: #c9d1d9;
-  --chart-tooltip-muted: #8b949e;
-  --chart-total: #c9d1d9;
+  --chart-grid: #1f2630;
+  --chart-axis: #9198a1;
+  --chart-tooltip-bg: #151b23;
+  --chart-tooltip-border: #2d3540;
+  --chart-tooltip-fg: #e6edf3;
+  --chart-tooltip-muted: #9198a1;
+  --chart-total: #e6edf3;
   --chart-baseline: #22c55e;
   --chart-orange: #ffa657;
   --chart-income: #56d364;
@@ -377,16 +201,22 @@
   --chart-category-8: #afb8c1;
   --chart-excluded: #68737f;
 
-  --fg-primary: #c9d1d9;
-  --fg-secondary: #8b949e;
-  --fg-tertiary: #afb8c1;
-  --fg-muted: #8b949e;
-  --bg-surface: #21262d;
-  --bg-canvas-subtle: #161b22;
-  --bg-page: #0d1117;
-  --border-default: #30363d;
-  --border-strong: #484f58;
-  --border-control: #68737f;
+  /* Surface ladder, darkest to brightest: inset (fields) < page < card
+     < elevated (menus, dialogs) < subtle (hover, table heads, tracks)
+     < accent (highlighted or selected menu items and toggles). Subtle sits
+     above elevated so hover states stay visible inside overlays. */
+  --fg-primary: #e6edf3;
+  --fg-secondary: #9198a1;
+  --fg-tertiary: #b1bac4;
+  --fg-muted: #9198a1;
+  --bg-inset: #07090d;
+  --bg-page: #0a0d12;
+  --bg-surface: #0f1419;
+  --bg-canvas-subtle: #171e27;
+  --bg-elevated: #151b23;
+  --border-default: #1f2630;
+  --border-strong: #2d3540;
+  --border-control: #5f6975;
   --focus-ring: #4ade80;
   --coffee-accent: #c58b5a;
 
@@ -394,7 +224,7 @@
   --foreground: var(--fg-primary);
   --card: var(--bg-surface);
   --card-foreground: var(--fg-primary);
-  --popover: var(--bg-surface);
+  --popover: var(--bg-elevated);
   --popover-foreground: var(--fg-primary);
   --primary: var(--mp-amber-500);
   --primary-foreground: var(--mp-slate-900);
@@ -402,8 +232,10 @@
   --secondary-foreground: var(--fg-primary);
   --muted: var(--bg-canvas-subtle);
   --muted-foreground: var(--fg-muted);
-  --accent: var(--mp-amber-100);
-  --accent-foreground: var(--mp-amber-300);
+  /* Menu and list highlight: a neutral lift, not a green wash. Selection
+     is shown by the check mark, so focus and selection never compete. */
+  --accent: #1f2731;
+  --accent-foreground: var(--fg-primary);
   --destructive: var(--mp-rose-500);
   --border: var(--border-default);
   --input: var(--border-control);
@@ -421,6 +253,51 @@
   --sidebar-accent-foreground: var(--mp-amber-300);
   --sidebar-border: var(--border-default);
   --sidebar-ring: var(--focus-ring);
+}
+
+/* Portal dialogs sit outside #root so the application can be inert while a
+ * modal remains interactive. Insets account for notches and home indicators. */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  background: rgb(1 4 9 / 0.65);
+}
+
+.dialog-overlay--centered {
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog-overlay--bottom-sheet {
+  align-items: flex-end;
+  justify-content: center;
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: 0;
+  padding-left: env(safe-area-inset-left);
+}
+
+.dialog-content {
+  max-height: calc(100dvh - max(1rem, env(safe-area-inset-top)) - max(1rem, env(safe-area-inset-bottom)) - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dialog-overlay--bottom-sheet > .dialog-content {
+  max-height: calc(100dvh - max(1rem, env(safe-area-inset-top)));
+}
+
+.dialog-overlay--dim {
+  background: rgb(1 4 9 / 0.75);
+}
+
+.dialog-overlay--onboarding {
+  background: rgb(0 0 0 / 0.7);
 }
 
 html, body, #root {
@@ -526,8 +403,8 @@ textarea {
 }
 
 /*
- * Card: #21262d overlay lifted off the #0d1117 page. Border is a
- * subtle divider; hover drops a deeper border for a stronger divider.
+ * Card: #0f1419 surface on the #0a0d12 page, defined by its hairline
+ * border; hover strengthens the border rather than the fill.
  */
 .card {
   background: var(--bg-surface);
@@ -579,8 +456,7 @@ input[type='number'] {
  * reference these via utility classes (.fg-primary, .bg-surface,
  * .border-default, etc.) so a palette change touches one block.
  *
- * Three-tier surface hierarchy:
- * Values switch between the light and dark palette blocks above.
+ * See the surface ladder in the :root block above.
  */
 .fg-primary { color: var(--fg-primary); }
 .fg-secondary { color: var(--fg-secondary); }
@@ -646,15 +522,13 @@ textarea {
   transition: color 150ms ease, background-color 150ms ease;
 }
 .save-icon-button:hover {
-  color: var(--mp-emerald-700);
+  color: var(--mp-emerald-300);
   background-color: var(--mp-emerald-50);
 }
 .edit-icon-button:hover {
-  color: var(--mp-amber-700);
+  color: var(--mp-amber-300);
   background-color: var(--mp-amber-50);
 }
-.dark .save-icon-button:hover { color: var(--mp-emerald-300); }
-.dark .edit-icon-button:hover { color: var(--mp-amber-300); }
 .save-icon-button:focus-visible,
 .edit-icon-button:focus-visible {
   outline: 2px solid var(--focus-ring);
@@ -789,6 +663,9 @@ textarea {
   --color-card:  var(--card);
   --color-foreground:  var(--foreground);
   --color-background:  var(--background);
+  --color-inset:  var(--bg-inset);
+  --color-elevated:  var(--bg-elevated);
+  --color-border-strong:  var(--border-strong);
   --radius-sm:  calc(var(--radius) * 0.6);
   --radius-md:  calc(var(--radius) * 0.8);
   --radius-lg:  var(--radius);

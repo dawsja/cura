@@ -5,6 +5,8 @@
  *                             paydown fields.
  *   - GET    /projection    → current projection under "Planned".
  *   - POST   /simulate      → projection under a chosen method + extras.
+ *     Both take an optional `start` (YYYY-MM) so the projection begins in
+ *     the browser's month rather than the server's.
  *   - PATCH  /account/:id   → edit interest / min / planned / include.
  *
  * The calculator is in @/lib/paydown and is a pure function — the routes
@@ -24,11 +26,11 @@ import {
   savePaydownScenario,
 } from '@/db/queries';
 import {
+  emptyProjection,
   projectPaydown,
-  type PaydownAccount,
+  toPaydownAccount,
   type PaydownMethod,
   type PaydownParams,
-  type PaydownProjection,
 } from '@/lib/paydown';
 import { userId, routeParam } from '@/lib/tenant';
 import { badRequest, safe } from '@/lib/errors';
@@ -37,34 +39,20 @@ import { aprRate, moneyAmount } from '@/lib/money';
 export const paydownRoutes = new Hono();
 const YearMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'yearMonth must be YYYY-MM');
 
-function toPaydownAccount(row: {
-  id: string;
-  name: string;
-  type: string;
-  balance: number;
-  interestRate: number;
-  minPayment: number;
-  plannedPayment: number;
-  includeInPaydown: boolean;
-}): PaydownAccount {
-  return {
-    id: row.id,
-    name: row.name,
-    type: row.type === 'loan' ? 'loan' : 'credit',
-    balance: row.balance,
-    apr: row.interestRate,
-    minPayment: row.minPayment,
-    plannedPayment: row.plannedPayment,
-    includeInPaydown: row.includeInPaydown,
-  };
-}
-
 const Method = z.enum(['planned', 'avalanche', 'snowball']);
 const SimulateSchema = z.object({
   method: Method,
   monthlyExtra: moneyAmount.default(0),
   oneTimeExtra: moneyAmount.default(0),
+  start: YearMonth.optional(),
 });
+
+/** First day of a YYYY-MM month, or now when the client didn't send one. */
+function startDate(ym: string | undefined): Date {
+  if (!ym) return new Date();
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y!, m! - 1, 1);
+}
 const EditPaydownSchema = z
   .object({
     interestRate: aprRate.optional(),
@@ -89,6 +77,8 @@ paydownRoutes.get(
 paydownRoutes.get(
   '/projection',
   safe(async (c) => {
+    const start = c.req.query('start');
+    if (start !== undefined && !YearMonth.safeParse(start).success) return badRequest(c, 'start must be YYYY-MM');
     const accts = await getLiabilityAccounts(userId(c));
     if (accts.length === 0) {
       return c.json(
@@ -103,7 +93,7 @@ paydownRoutes.get(
       method: 'planned',
       monthlyExtra: 0,
       oneTimeExtra: 0,
-    });
+    }, startDate(start));
     return c.json(projection);
   }),
 );
@@ -124,7 +114,7 @@ paydownRoutes.post(
       monthlyExtra: parsed.data.monthlyExtra,
       oneTimeExtra: parsed.data.oneTimeExtra,
     };
-    const projection = projectPaydown(accts.map(toPaydownAccount), params);
+    const projection = projectPaydown(accts.map(toPaydownAccount), params, startDate(parsed.data.start));
     return c.json(projection);
   }),
 );
@@ -201,6 +191,15 @@ paydownRoutes.patch(
     const body = await c.req.json().catch(() => null);
     const parsed = SnapshotPlannedSchema.safeParse(body);
     if (!parsed.success) return badRequest(c, parsed.error.issues[0]?.message ?? 'invalid input');
+    // The Pay down projection never pays less than the minimum, so Budget
+    // must not plan less either — unless the balance itself is smaller,
+    // which is what Save to Budget plans for a nearly paid-off debt.
+    const existing = await getAccount(userId(c), routeParam(c, 'id'));
+    const floor = existing ? Math.min(existing.minPayment, existing.balance) : 0;
+    if (existing && existing.balance > 0 && parsed.data.planned < floor) {
+      const what = floor < existing.minPayment ? 'the balance owed' : 'the minimum payment';
+      return badRequest(c, `Planned payment must be at least ${floor.toFixed(2)} (${what})`);
+    }
     const ok = await updatePaydownPlannedForMonth(userId(c), ym, routeParam(c, 'id'), parsed.data.planned);
     if (!ok) return badRequest(c, 'account not found or not a liability');
     return c.json({ ok: true });
@@ -263,21 +262,3 @@ paydownRoutes.post(
     });
   }),
 );
-
-function emptyProjection(method: PaydownMethod, params: PaydownParams): PaydownProjection {
-  return {
-    method,
-    params,
-    startingTotal: 0,
-    totalInterest: 0,
-    totalPaid: 0,
-    monthsToDebtFree: 0,
-    debtFreeMonth: null,
-    perAccount: [],
-    timeline: [],
-    baselineTimeline: [],
-    baselineTotalInterest: 0,
-    baselineMonthsToDebtFree: 0,
-    baselineDebtFreeMonth: null,
-  };
-}

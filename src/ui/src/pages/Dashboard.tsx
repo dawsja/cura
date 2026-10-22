@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { currentYearMonth, formatMoney } from '../lib/format';
@@ -6,25 +6,18 @@ import { formatAccountBalance, netWorthContribution, isLiability } from '../lib/
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
-  TrendingUp,
-  TrendingDown,
-  Wallet,
   ArrowLeftRight,
   ChevronRight,
   Check,
   Pencil,
   X,
-  Calendar,
-  BellRing,
 } from 'lucide-react';
-import { SummaryCard } from '../components/SummaryCard';
 import { SortableWidgetList } from '../components/SortableWidgetList';
-import { Alert, AlertAction, AlertDescription } from '../components/ui/alert';
+import { Alert, AlertDescription } from '../components/ui/alert';
 import { AsyncQueryState } from '../components/ui/AsyncQueryState';
 import { Button } from '../components/ui/button';
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from '../components/ui/empty';
-import { Progress } from '../components/ui/progress';
 import { Spinner } from '../components/ui/spinner';
 import { GoalProgressBar } from '../components/GoalProgressBar';
 import clsx from 'clsx';
@@ -99,10 +92,10 @@ interface DashboardLayout { order: WidgetId[]; hidden: WidgetId[]; }
 
 const WIDGET_LABELS: Record<WidgetId, string> = {
   summary: 'Summary',
-  budget: 'This month',
+  budget: 'Budget lines to watch',
   'coming-up': 'Coming up',
   'save-up': 'Save up',
-  'assets-liabilities': 'Assets & Liabilities',
+  'assets-liabilities': 'Assets and liabilities',
   accounts: 'Accounts',
   'recent-transactions': 'Recent transactions',
 };
@@ -131,17 +124,25 @@ function withAllWidgets(order: WidgetId[]): WidgetId[] {
  *  Dashboard "Recent" list, the Transactions table, and anywhere else
  *  we render a tx all agree. */
 function txTypeStyle(type: DashboardTransaction['type']): { sign: string; amount: string } {
-  if (type === 'income') return { sign: '+', amount: 'text-emerald-600 dark:text-emerald-400' };
-  if (type === 'expense') return { sign: '−', amount: 'text-rose-600 dark:text-rose-400' };
-  return { sign: '⇄', amount: 'text-slate-600 dark:text-slate-400' };
+  if (type === 'income') return { sign: '+', amount: 'text-emerald-400' };
+  if (type === 'expense') return { sign: '−', amount: 'text-rose-400' };
+  return { sign: '⇄', amount: 'text-slate-400' };
 }
 
 function daysLabel(days: number): string {
-  if (days < 0) return `${Math.abs(days)}d overdue`;
-  if (days === 0) return 'today';
-  if (days === 1) return 'tomorrow';
-  return `in ${days} days`;
+  if (days < 0) return `${Math.abs(days)} day${days === -1 ? '' : 's'} overdue`;
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  return `In ${days} days`;
 }
+
+function monthName(yearMonth: string): string {
+  const [year, month] = yearMonth.split('-').map(Number);
+  return new Date(year!, (month ?? 1) - 1, 1).toLocaleString('en-US', { month: 'long' });
+}
+
+/** Widgets that sit two-up on wide screens when they appear next to each other. */
+const HALF_WIDTH_WIDGETS = new Set<WidgetId>(['budget', 'coming-up', 'save-up', 'accounts', 'recent-transactions']);
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -309,74 +310,107 @@ export function Dashboard() {
 
   const renderWidget = (widget: WidgetId) => {
     if (widget === 'summary') {
+      const budgetLoading = cats.isLoading || budgets.isLoading || budgetActivity.isLoading;
+      const budgetError = cats.isError || budgets.isError || budgetActivity.isError;
+      const hasBudget = monthBudget.plannedExpense > 0;
+      const over = monthBudget.remaining < 0;
+      let leftValue: ReactNode;
+      let leftSub: ReactNode;
+      if (budgetLoading) {
+        leftValue = <span className="text-muted-foreground">…</span>;
+        leftSub = 'Loading budget';
+      } else if (budgetError) {
+        leftValue = <span className="text-muted-foreground">—</span>;
+        leftSub = 'Could not load the budget';
+      } else if (!hasBudget) {
+        leftValue = <span className="text-muted-foreground">—</span>;
+        leftSub = (
+          <Button type="button" variant="link" className="h-auto p-0 md:h-auto" onClick={() => navigate('/budget')}>
+            Set a budget
+          </Button>
+        );
+      } else {
+        leftValue = (
+          <span className={over ? 'text-rose-400' : 'text-emerald-400'}>
+            {over ? '−' : ''}{formatMoney(Math.abs(monthBudget.remaining))}
+          </span>
+        );
+        leftSub = over
+          ? `Over the ${formatMoney(monthBudget.plannedExpense)} budgeted`
+          : `of ${formatMoney(monthBudget.plannedExpense)} budgeted`;
+      }
       return (
-        <div className="summary-scroll grid grid-cols-1 gap-3 md:grid-cols-3">
-          <SummaryCard label="Net worth" sub="Sum of all accounts" tone={totalBalance >= 0 ? 'slate' : 'rose'} icon={<Wallet className="h-4 w-4" />} value={formatMoney(totalBalance)} />
-          <SummaryCard label="Income (30d)" sub="Deposits (transfers excluded)" tone="emerald" icon={<TrendingUp className="h-4 w-4" />} value={formatMoney(income)} />
-          <SummaryCard label="Spending (30d)" sub="Out-of-pocket expenses" tone="rose" icon={<TrendingDown className="h-4 w-4" />} value={formatMoney(expense)} />
-        </div>
+        <section aria-label="Summary" className="@container rounded-xl bg-card ring-1 ring-border">
+          <dl className="grid grid-cols-2 @3xl:grid-cols-4">
+            <LedgerCell
+              label="Net worth"
+              value={<span className={totalBalance < 0 ? 'text-rose-400' : undefined}>{totalBalance < 0 ? '−' : ''}{formatMoney(Math.abs(totalBalance))}</span>}
+              sub={`${formatMoney(totalAssets)} owned, ${formatMoney(totalLiabilities)} owed`}
+            />
+            <LedgerCell
+              className="border-l border-border"
+              label={`Left to spend in ${monthName(ym)}`}
+              value={leftValue}
+              sub={leftSub}
+            />
+            <LedgerCell
+              className="border-t border-border @3xl:border-t-0 @3xl:border-l"
+              label="Income, last 30 days"
+              value={formatMoney(income)}
+              sub="Transfers excluded"
+            />
+            <LedgerCell
+              className="border-t border-l border-border @3xl:border-t-0"
+              label="Spending, last 30 days"
+              value={formatMoney(expense)}
+              sub="Out of pocket"
+            />
+          </dl>
+        </section>
       );
     }
 
     if (widget === 'budget') {
       const budgetLoading = cats.isLoading || budgets.isLoading || budgetActivity.isLoading;
       const budgetError = cats.isError || budgets.isError || budgetActivity.isError;
-      const pct = monthBudget.plannedExpense > 0
-        ? (monthBudget.spentExpense / monthBudget.plannedExpense) * 100
-        : 0;
-      const over = monthBudget.remaining < 0;
       return (
-        <Card>
+        <Card className="h-full">
           <CardHeader>
-            <CardTitle>This month</CardTitle>
+            <CardTitle>Budget lines to watch</CardTitle>
             <CardAction>
               <Button type="button" variant="link" onClick={() => navigate('/budget')}>
-                Budget <ArrowRight data-icon="inline-end" />
+                Open budget <ArrowRight data-icon="inline-end" />
               </Button>
             </CardAction>
           </CardHeader>
           <CardContent>
           {budgetLoading ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">Loading this month's budget...</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">Loading this month's budget…</p>
           ) : budgetError ? (
-            <Alert variant="destructive">
-              <AlertDescription>Could not load this month's budget.</AlertDescription>
-            </Alert>
-          ) : monthBudget.plannedExpense <= 0 && monthBudget.spentExpense <= 0 ? (
-            <EmptyAction message="No expense budget this month." action="Set budget" onClick={() => navigate('/budget')} />
+            <p className="py-4 text-center text-sm text-destructive">Could not load this month's budget.</p>
+          ) : monthBudget.hotspots.length === 0 ? (
+            <EmptyAction message="No expense budget this month." action="Set a budget" onClick={() => navigate('/budget')} />
           ) : (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">Left to spend</p>
-                  <p className={clsx('text-2xl font-bold tabular-nums', over ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400')}>
-                    {over ? '−' : ''}{formatMoney(Math.abs(monthBudget.remaining))}
-                  </p>
-                </div>
-                <div className="text-right text-xs tabular-nums text-muted-foreground">
-                  {formatMoney(monthBudget.spentExpense)} of {formatMoney(monthBudget.plannedExpense)}
-                </div>
-              </div>
-              <Progress
-                value={pct}
-                tone={over ? 'rose' : monthBudget.spentExpense >= monthBudget.plannedExpense * 0.7 ? 'amber' : 'emerald'}
-              />
-              {monthBudget.hotspots.length > 0 && (
-                <ul className="divide-y divide-border">
-                  {monthBudget.hotspots.map((row) => {
-                    const rowOver = row.spent > row.planned;
-                    return (
-                      <li key={row.key} className="flex items-center justify-between gap-3 py-2 text-sm">
-                        <span className="truncate">{row.name}</span>
-                        <span className={clsx('shrink-0 tabular-nums', rowOver ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>
-                          {formatMoney(row.spent)} / {formatMoney(row.planned)}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
+            <ul className="divide-y divide-border border-t border-border">
+              {monthBudget.hotspots.map((row) => {
+                const rowOver = row.spent > row.planned;
+                const left = row.planned - row.spent;
+                return (
+                  <li key={row.key} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <div className="truncate">{row.name}</div>
+                      <div className={clsx('text-xs tabular-nums', rowOver ? 'text-rose-400' : 'text-muted-foreground')}>
+                        {rowOver ? `Over by ${formatMoney(-left)}` : left === 0 ? 'Fully spent' : `${formatMoney(left)} left`}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right tabular-nums">
+                      <span className={clsx('font-semibold', rowOver && 'text-rose-400')}>{formatMoney(row.spent)}</span>
+                      <span className="text-muted-foreground"> of {formatMoney(row.planned)}</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
           </CardContent>
         </Card>
@@ -390,7 +424,7 @@ export function Dashboard() {
             <CardTitle>Coming up</CardTitle>
             <CardAction>
               <Button type="button" variant="link" onClick={() => navigate('/recurring')}>
-                Recurring <ArrowRight data-icon="inline-end" />
+                All recurring <ArrowRight data-icon="inline-end" />
               </Button>
             </CardAction>
           </CardHeader>
@@ -398,23 +432,20 @@ export function Dashboard() {
           {recurring.isLoading ? (
             <p className="py-4 text-center text-sm text-muted-foreground">Loading upcoming charges…</p>
           ) : recurring.isError ? (
-            <Alert variant="destructive">
-              <AlertDescription>Could not load upcoming charges.</AlertDescription>
-            </Alert>
+            <p className="py-4 text-center text-sm text-destructive">Could not load upcoming charges.</p>
           ) : upcomingCharges.length === 0 ? (
             <EmptyAction message="No upcoming charges." action="See recurring" onClick={() => navigate('/recurring')} />
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="divide-y divide-border border-t border-border">
               {upcomingCharges.map((charge) => (
-                <li key={`${charge.merchant}|${charge.accountId ?? charge.account}|${charge.nextDate}`} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <li key={`${charge.merchant}|${charge.accountId ?? charge.account}|${charge.nextDate}`} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{charge.merchant}</div>
-                    <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                      <Calendar className="size-3" />
+                    <div className="truncate">{charge.merchant}</div>
+                    <div className={clsx('text-xs', charge.daysUntil < 0 ? 'text-sky-300' : 'text-muted-foreground')}>
                       {daysLabel(charge.daysUntil)}
                     </div>
                   </div>
-                  <div className="shrink-0 font-semibold tabular-nums text-rose-600 dark:text-rose-400">
+                  <div className="shrink-0 text-right font-semibold tabular-nums">
                     {formatMoney(charge.amount)}
                   </div>
                 </li>
@@ -441,9 +472,7 @@ export function Dashboard() {
           {goals.isLoading ? (
             <p className="py-4 text-center text-sm text-muted-foreground">Loading savings goals…</p>
           ) : goals.isError ? (
-            <Alert variant="destructive">
-              <AlertDescription>Could not load savings goals.</AlertDescription>
-            </Alert>
+            <p className="py-4 text-center text-sm text-destructive">Could not load savings goals.</p>
           ) : goalRows.length === 0 ? (
             <EmptyAction message="No savings goals yet." action="Add a goal" onClick={() => navigate('/saveup')} />
           ) : (
@@ -456,9 +485,9 @@ export function Dashboard() {
                 return (
                   <li key={goal.id}>
                     <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="truncate font-medium">{goal.name}</span>
-                      <span className={clsx('shrink-0 tabular-nums', reached ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
-                        {hasAccount ? `${formatMoney(current)} / ${formatMoney(goal.target)}` : 'No account'}
+                      <span className="truncate">{goal.name}</span>
+                      <span className={clsx('shrink-0 tabular-nums', reached ? 'text-emerald-400' : 'text-muted-foreground')}>
+                        {hasAccount ? `${formatMoney(current)} of ${formatMoney(goal.target)}` : 'No account'}
                       </span>
                     </div>
                     <GoalProgressBar className="mt-1.5" value={pct} />
@@ -476,16 +505,16 @@ export function Dashboard() {
       return (
         <Card>
           <CardHeader>
-            <CardTitle>Assets & Liabilities</CardTitle>
+            <CardTitle>Assets and liabilities</CardTitle>
           </CardHeader>
           <CardContent>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-semibold">Assets</span>
-                <span className="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{formatMoney(totalAssets)}</span>
+                <span className="text-sm font-semibold tabular-nums text-emerald-400">{formatMoney(totalAssets)}</span>
               </div>
-              <ul className="flex flex-col gap-1 pl-3">
+              <ul className="flex flex-col gap-1">
                 <ExpandableSubcategory label="Cash" total={cashTotal} accounts={cashAccounts} expanded={expandedSections.has('cash')} onToggle={() => toggleSection('cash')} />
                 <ExpandableSubcategory label="Investments" total={investmentTotal} accounts={investmentAccounts} expanded={expandedSections.has('investments')} onToggle={() => toggleSection('investments')} />
               </ul>
@@ -493,11 +522,11 @@ export function Dashboard() {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-semibold">Liabilities</span>
-                <span className="text-sm font-semibold tabular-nums text-rose-600 dark:text-rose-400">{formatMoney(totalLiabilities)}</span>
+                <span className="text-sm font-semibold tabular-nums text-rose-400">{totalLiabilities > 0 ? '−' : ''}{formatMoney(totalLiabilities)}</span>
               </div>
-              <ul className="flex flex-col gap-1 pl-3">
-                <ExpandableSubcategory label="Credit Cards" total={creditTotal} accounts={creditAccounts} expanded={expandedSections.has('credit')} onToggle={() => toggleSection('credit')} />
-                <ExpandableSubcategory label="Loans" total={loanTotal} accounts={loanAccounts} expanded={expandedSections.has('loans')} onToggle={() => toggleSection('loans')} />
+              <ul className="flex flex-col gap-1">
+                <ExpandableSubcategory label="Credit cards" owed total={creditTotal} accounts={creditAccounts} expanded={expandedSections.has('credit')} onToggle={() => toggleSection('credit')} />
+                <ExpandableSubcategory label="Loans" owed total={loanTotal} accounts={loanAccounts} expanded={expandedSections.has('loans')} onToggle={() => toggleSection('loans')} />
               </ul>
             </div>
           </div>
@@ -546,12 +575,12 @@ export function Dashboard() {
       <Card className="flex h-full flex-col">
         <CardHeader>
           <CardTitle>Recent transactions</CardTitle>
-          <CardAction className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {transferCount > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <ArrowLeftRight className="size-3 shrink-0" /> {transferCount} transfer{transferCount === 1 ? '' : 's'} (excluded from totals)
-              </span>
-            )}
+          {transferCount > 0 && (
+            <CardDescription className="flex items-center gap-1 text-xs">
+              <ArrowLeftRight className="size-3 shrink-0" /> {transferCount} transfer{transferCount === 1 ? '' : 's'}, excluded from totals
+            </CardDescription>
+          )}
+          <CardAction>
             <Button type="button" variant="link" onClick={() => navigate('/transactions')}>
               View all <ArrowRight data-icon="inline-end" />
             </Button>
@@ -592,25 +621,27 @@ export function Dashboard() {
   const displayedOrder = editing ? draftOrder : savedOrder;
   const displayedHidden = new Set(editing ? draftHidden : savedHidden);
   const visibleDisplayedOrder = displayedOrder.filter((widget) => !displayedHidden.has(widget));
-  const PAIR_NEIGHBOR: Partial<Record<WidgetId, WidgetId>> = {
-    'coming-up': 'save-up',
-    'save-up': 'coming-up',
-    accounts: 'recent-transactions',
-    'recent-transactions': 'accounts',
+  // Consecutive half-width widgets pair up two per row; an unpaired one
+  // at the end of a run spans the full width so no row is left half empty.
+  const halfWidth = new Set<WidgetId>();
+  let run: WidgetId[] = [];
+  const flushRun = () => {
+    const pairable = run.length - (run.length % 2);
+    for (let i = 0; i < pairable; i++) halfWidth.add(run[i]!);
+    run = [];
   };
-  const dashboardItemClass = (widget: WidgetId) => {
-    const neighbor = PAIR_NEIGHBOR[widget];
-    if (!neighbor) return 'flex flex-col min-w-0 md:col-span-2';
-    const index = visibleDisplayedOrder.indexOf(widget);
-    return visibleDisplayedOrder[index - 1] === neighbor || visibleDisplayedOrder[index + 1] === neighbor
-      ? 'flex flex-col min-w-0 min-h-0'
-      : 'flex flex-col min-w-0 md:col-span-2';
-  };
+  for (const widget of visibleDisplayedOrder) {
+    if (HALF_WIDTH_WIDGETS.has(widget)) run.push(widget);
+    else flushRun();
+  }
+  flushRun();
+  const dashboardItemClass = (widget: WidgetId) =>
+    halfWidth.has(widget) ? 'flex flex-col min-w-0 min-h-0' : 'flex flex-col min-w-0 md:col-span-2';
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex min-h-11 flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center max-md:flex-1">
+        <div className={clsx('flex items-center max-md:order-last', !editing && 'max-md:ml-auto')}>
           <h1 className="text-2xl font-bold">Home</h1>
           {!editing && (
             // On mobile the page h1 is hidden (the app bar owns the title),
@@ -620,8 +651,18 @@ export function Dashboard() {
             </Button>
           )}
         </div>
+        {!editing && reviews.count > 0 && (
+          <div role="status" className="flex items-center gap-3 text-sm text-muted-foreground max-md:min-w-0 max-md:flex-1">
+            <span className="max-md:min-w-0 max-md:flex-1">
+              {reviews.count} imported transaction{reviews.count === 1 ? ' isn’t' : 's aren’t'} counted until you review {reviews.count === 1 ? 'it' : 'them'}.
+            </span>
+            <Button type="button" variant="outline" className="shrink-0" onClick={reviews.openModal}>
+              Review {reviews.count}
+            </Button>
+          </div>
+        )}
         {editing && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 max-md:ml-auto">
             <Button type="button" variant="outline" onClick={cancelEditing} disabled={saveLayout.isPending}>
               <X data-icon="inline-start" /> Cancel
             </Button>
@@ -637,19 +678,6 @@ export function Dashboard() {
           <AlertDescription>Could not save the home layout. Please try again.</AlertDescription>
         </Alert>
       )}
-      {!editing && reviews.count > 0 && (
-        <Alert>
-          <BellRing />
-          <AlertDescription>
-            You have {reviews.count} transaction{reviews.count === 1 ? '' : 's'} to review. They are not counted in this month&apos;s leftover yet.
-          </AlertDescription>
-          <AlertAction>
-            <Button type="button" variant="link" onClick={reviews.openModal}>
-              Review now →
-            </Button>
-          </AlertAction>
-        </Alert>
-      )}
 
       <SortableWidgetList
         order={displayedOrder}
@@ -662,6 +690,28 @@ export function Dashboard() {
         hidden={displayedHidden}
         onToggleHidden={editing ? toggleHidden : undefined}
       />
+    </div>
+  );
+}
+
+function LedgerCell({
+  label,
+  value,
+  sub,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  sub: ReactNode;
+  className?: string;
+}) {
+  return (
+    // Each cell spans three rows of the parent grid via subgrid, so labels,
+    // amounts and notes line up across a row even when a label wraps.
+    <div className={clsx('row-span-3 grid min-w-0 grid-rows-subgrid px-4 py-4 @3xl:px-6 @3xl:py-5', className)}>
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="mt-1 truncate text-xl font-bold tracking-tight tabular-nums @3xl:text-[1.75rem] @3xl:leading-tight">{value}</dd>
+      <dd className="mt-1 text-sm text-muted-foreground">{sub}</dd>
     </div>
   );
 }
@@ -691,12 +741,14 @@ function EmptyAction({
 
 function ExpandableSubcategory({
   label,
+  owed = false,
   total,
   accounts,
   expanded,
   onToggle,
 }: {
   label: string;
+  owed?: boolean;
   total: number;
   accounts: Account[];
   expanded: boolean;
@@ -708,7 +760,7 @@ function ExpandableSubcategory({
         type="button"
         variant="ghost"
         onClick={onToggle}
-        className="h-auto w-full justify-between py-1.5"
+        className="-mx-2 h-auto w-[calc(100%+1rem)] justify-between px-2 py-1.5 md:h-auto"
         aria-expanded={expanded}
       >
         <span className="flex items-center gap-1.5 font-medium">
@@ -720,14 +772,14 @@ function ExpandableSubcategory({
           />
           {label}
         </span>
-        <span className="font-medium tabular-nums">{formatMoney(total)}</span>
+        <span className="font-medium tabular-nums">{owed && total > 0 ? '−' : ''}{formatMoney(total)}</span>
       </Button>
       {expanded && accounts.length > 0 && (
         <ul className="flex flex-col gap-1 pb-1 pl-5">
           {accounts.map((a) => {
             const balance = formatAccountBalance(a, formatMoney);
             return (
-              <li key={a.id} className="flex items-center justify-between text-xs">
+              <li key={a.id} className="flex items-center justify-between py-0.5 text-xs">
                 <span className="mr-2 truncate text-muted-foreground">{a.name}</span>
                 <span className={clsx('shrink-0 tabular-nums', balance.colorClass)}>{balance.text}</span>
               </li>

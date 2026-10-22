@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchMe } from './lib/auth';
 import { ReviewsProvider } from './components/ReviewsProvider';
@@ -16,6 +16,7 @@ import { SaveUp } from './pages/SaveUp';
 import { Reports } from './pages/Reports';
 import { Rules } from './pages/Rules';
 import { Recurring } from './pages/Recurring';
+import { Device } from './pages/Device';
 import { AsyncQueryState } from './components/ui/AsyncQueryState';
 import { FinancialOnboardingProvider } from './components/FinancialOnboardingProvider';
 import { CurrencyProvider } from './lib/currency';
@@ -36,6 +37,7 @@ async function fetchSetupStatus(): Promise<SetupStatus> {
 }
 
 export default function App() {
+  const location = useLocation();
   const setupQ = useQuery({ queryKey: ['setup'], queryFn: fetchSetupStatus });
   const meQ = useQuery({
     queryKey: ['me'],
@@ -104,6 +106,11 @@ export default function App() {
     return (
       <Routes>
         <Route path="/sign-in" element={<SignIn />} />
+        {/* Device approval links carry a code that must survive sign-in. */}
+        <Route
+          path="/device"
+          element={<Navigate to={`/sign-in?callbackURL=${encodeURIComponent(location.pathname + location.search)}`} replace />}
+        />
         <Route path="*" element={<Navigate to="/sign-in" replace />} />
       </Routes>
     );
@@ -126,6 +133,7 @@ export default function App() {
             <Route path="/rules" element={<Rules />} />
             <Route path="/recurring" element={<Recurring />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/device" element={<Device />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout>

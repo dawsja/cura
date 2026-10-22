@@ -24,15 +24,14 @@ import {
   setSetting,
   getSpendingCategoryTrends,
   getSpendingPace,
-  getEarliestReportDate,
 } from '@/db/queries';
 import { userId } from '@/lib/tenant';
 import { badRequest, safe } from '@/lib/errors';
-import { retentionPolicy } from '@/lib/retention';
+import { ReportRange, resolveReportRange } from '@/lib/report-range';
 
 export const reportRoutes = new Hono();
 
-const Range = z.enum(['1m', '3m', '6m', '1y', 'all']);
+const Range = ReportRange;
 const MonthParam = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'month must be YYYY-MM');
 const REPORT_LAYOUT_KEY = 'report_widget_order';
 const ReportWidgetId = z.enum([
@@ -80,52 +79,6 @@ function parseStoredReportLayout(raw: string | null): z.infer<typeof ReportLayou
   }
 }
 
-/**
- * Inclusive [fromDate, toDate] in 'YYYY-MM-DD' for the given range
- * token. `toDate` is end-of-today’s month for the reporting window so
- * that "1m" includes the full in-progress month. `all` starts at the user's
- * earliest accepted transaction. Every range is clamped when retention is on.
- */
-async function resolveRange(
-  user: string,
-  range: z.infer<typeof Range>,
-  now: Date = new Date(),
-): Promise<{ fromDate: string; toDate: string }> {
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth();
-  const retentionFloor = retentionPolicy(now).cutoffDate;
-
-  // toDate = last day of the current month (inclusive).
-  const endOfThisMonth = new Date(Date.UTC(y, m + 1, 0));
-  const toDate = endOfThisMonth.toISOString().slice(0, 10);
-
-  let startMonthOffset: number;
-  switch (range) {
-    case '1m':
-      startMonthOffset = 0;
-      break;
-    case '3m':
-      startMonthOffset = 2;
-      break;
-    case '6m':
-      startMonthOffset = 5;
-      break;
-    case '1y':
-      startMonthOffset = 11;
-      break;
-    case 'all':
-      startMonthOffset = 0;
-      break;
-  }
-
-  const start = new Date(Date.UTC(y, m - startMonthOffset, 1));
-  let fromDate = range === 'all'
-    ? (await getEarliestReportDate(user)) ?? start.toISOString().slice(0, 10)
-    : start.toISOString().slice(0, 10);
-  if (retentionFloor && fromDate < retentionFloor) fromDate = retentionFloor;
-  return { fromDate, toDate };
-}
-
 reportRoutes.get(
   '/layout',
   safe(async (c) => {
@@ -151,7 +104,7 @@ reportRoutes.get(
     const parsed = Range.safeParse(c.req.query('range') ?? '6m');
     if (!parsed.success) return badRequest(c, 'range must be one of 1m, 3m, 6m, 1y, all');
     const uid = userId(c);
-    const { fromDate, toDate } = await resolveRange(uid, parsed.data);
+    const { fromDate, toDate } = await resolveReportRange(uid, parsed.data);
     return c.json(await getCashFlowSeries(uid, fromDate, toDate));
   }),
 );
@@ -162,7 +115,7 @@ reportRoutes.get(
     const parsed = Range.safeParse(c.req.query('range') ?? '6m');
     if (!parsed.success) return badRequest(c, 'range must be one of 1m, 3m, 6m, 1y, all');
     const uid = userId(c);
-    const { fromDate, toDate } = await resolveRange(uid, parsed.data);
+    const { fromDate, toDate } = await resolveReportRange(uid, parsed.data);
     return c.json(await getNetWorthSeries(uid, fromDate, toDate));
   }),
 );
@@ -184,7 +137,7 @@ reportRoutes.get(
     const parsed = Range.safeParse(c.req.query('range') ?? '6m');
     if (!parsed.success) return badRequest(c, 'range must be one of 1m, 3m, 6m, 1y, all');
     const uid = userId(c);
-    const { fromDate, toDate } = await resolveRange(uid, parsed.data);
+    const { fromDate, toDate } = await resolveReportRange(uid, parsed.data);
     return c.json(await getSpendingCategoryTrends(uid, fromDate, toDate));
   }),
 );
@@ -206,7 +159,7 @@ reportRoutes.get(
     const parsed = Range.safeParse(c.req.query('range') ?? '6m');
     if (!parsed.success) return badRequest(c, 'range must be one of 1m, 3m, 6m, 1y, all');
     const uid = userId(c);
-    const { fromDate, toDate } = await resolveRange(uid, parsed.data);
+    const { fromDate, toDate } = await resolveReportRange(uid, parsed.data);
     return c.json(await getTopMerchants(uid, fromDate, toDate));
   }),
 );

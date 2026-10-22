@@ -62,7 +62,7 @@ export function formatAccountBalance(
   const owed = isLiability(acc.type);
   return {
     text: owed ? `−${format(Math.abs(acc.balance))}` : format(Math.abs(acc.balance)),
-    colorClass: owed ? 'text-rose-600 dark:text-rose-400' : 'fg-primary',
+    colorClass: owed ? 'text-rose-400' : 'fg-primary',
     isLiability: owed,
   };
 }

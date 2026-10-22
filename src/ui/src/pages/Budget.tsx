@@ -4,11 +4,11 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { formatDate, formatMoney, currentYearMonth } from '../lib/format';
-import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, ExternalLink, Layers3, ReceiptText, Search, Undo2 } from 'lucide-react';
+import { ArrowRight, BarChart3, Check, ChevronRight, ExternalLink, Layers3, ReceiptText, Search, Undo2 } from 'lucide-react';
 import { MonthPicker } from '../components/MonthPicker';
-import { Progress } from '../components/ui/progress';
-import { BudgetSummaryBox } from '../components/BudgetSummaryBox';
+import { BudgetSummaryBox, type PlannedSpendingSlice } from '../components/BudgetSummaryBox';
 import { PaydownBudgetSection, type PaydownBudgetRow, type PaydownBudgetMeta, type PlannedCellStatus } from '../components/PaydownBudgetSection';
+import { BudgetColumnHeader, BudgetGroup, BudgetLine, PlannedInput, sumMoney } from '../components/budget/BudgetTableParts';
 import clsx from 'clsx';
 import {
   Dialog,
@@ -20,14 +20,15 @@ import {
 } from '../components/ui/dialog';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../components/ui/input-group';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card } from '../components/ui/card';
 import { Alert, AlertAction, AlertDescription } from '../components/ui/alert';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../components/ui/empty';
 import { Checkbox } from '../components/ui/checkbox';
 import { Field, FieldGroup, FieldLabel } from '../components/ui/field';
 import { Badge } from '../components/ui/badge';
+import { Label } from '../components/ui/label';
 import { Spinner } from '../components/ui/spinner';
+import { Switch } from '../components/ui/switch';
 import { AsyncQueryState } from '../components/ui/AsyncQueryState';
 
 interface MainCategory {
@@ -83,10 +84,57 @@ interface PaydownSnapshotResponse {
   meta: PaydownBudgetMeta;
 }
 
+/** One sub-category line of the budget table. */
+interface LineModel {
+  id: string;
+  name: string;
+  categoryName: string;
+  planned: number;
+  actual: number;
+  count: number;
+}
+/** One collapsible group: the merged Income group, or an expense category. */
+interface GroupModel {
+  key: string;
+  name: string;
+  type: 'income' | 'expense';
+  color: string;
+  lines: LineModel[];
+  planned: number;
+  actual: number;
+  /** Nothing planned and nothing spent this month. */
+  empty: boolean;
+}
+
 const PAYDOWN_SECTION_ID = 'paydown-section';
+const PAYDOWN_KEY = 'Pay down';
+const GROUP_STATE_KEY = 'cura:budget:group-open';
+const HIDE_UNBUDGETED_KEY = 'cura:budget:hide-unbudgeted';
 const draftKey = (yearMonth: string, id: string) => `${yearMonth}:${id}`;
 const actualKey = (category: string, subCategory?: string) => `${category}\0${subCategory ?? category}`;
-const PLANNED_INPUT_CLS = 'min-h-11 w-28 text-right tabular-nums sm:h-9 sm:min-h-0';
+const isUnbudgeted = (line: LineModel) => line.planned === 0 && line.actual === 0;
+
+/** Expense groups take chart colours by planned size; the largest gets blue, red is used last. */
+const GROUP_COLORS = [4, 5, 7, 6, 1, 2, 3].map((n) => `var(--chart-category-${n})`);
+const OTHER_GROUP_COLOR = 'var(--chart-category-8)';
+const INCOME_COLOR = 'var(--chart-income)';
+const PAYDOWN_COLOR = 'var(--fg-tertiary)';
+
+function readStored<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : (JSON.parse(raw) as T);
+  } catch {
+    return fallback;
+  }
+}
+function writeStored(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage unavailable (private mode, blocked site data): keep in-memory state only.
+  }
+}
 
 export function Budget() {
   const qc = useQueryClient();
@@ -95,12 +143,17 @@ export function Budget() {
   const [paydownLive, setPaydownLive] = useState<Map<string, number>>(new Map());
   const [budgetStatuses, setBudgetStatuses] = useState<Map<string, PlannedCellStatus>>(new Map());
   const [paydownStatuses, setPaydownStatuses] = useState<Map<string, PlannedCellStatus>>(new Map());
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [cellErrors, setCellErrors] = useState<Map<string, string>>(new Map());
+  // Explicit expand/collapse choices per group, remembered per browser.
+  // Groups without a choice start collapsed only when nothing is planned or spent.
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(() => readStored(GROUP_STATE_KEY, {}));
+  const [hideUnbudgeted, setHideUnbudgeted] = useState<boolean>(() => readStored<unknown>(HIDE_UNBUDGETED_KEY, false) === true);
   const [drilldown, setDrilldown] = useState<BudgetDrilldown | null>(null);
   const liveOverridesRef = useRef(liveOverrides);
   const paydownLiveRef = useRef(paydownLive);
   const budgetInFlight = useRef(new Set<string>());
   const paydownInFlight = useRef(new Set<string>());
+  const hideId = useId();
 
   const cats = useQuery({ queryKey: ['categories'], queryFn: () => api.get<MainCategory[]>('/api/categories') });
   const budgets = useQuery({
@@ -160,28 +213,11 @@ export function Budget() {
     return m;
   }, [paydownLive, paydownSnapshot.data, ym]);
 
-  const earnedMap = useMemo(() => {
-    const m = new Map<string, number>();
+  // Actual amounts and transaction counts per (category, sub-category) and type.
+  const activityMap = useMemo(() => {
+    const m = new Map<string, { actual: number; count: number }>();
     for (const row of activity.data?.rows ?? []) {
-      if (row.type !== 'income') continue;
-      m.set(actualKey(row.category, row.subCategory), row.actual);
-    }
-    return m;
-  }, [activity.data]);
-
-  const spentMap = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const row of activity.data?.rows ?? []) {
-      if (row.type !== 'expense') continue;
-      m.set(actualKey(row.category, row.subCategory), row.actual);
-    }
-    return m;
-  }, [activity.data]);
-
-  const txnCountMap = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const row of activity.data?.rows ?? []) {
-      m.set(actualKey(row.category, row.subCategory), row.transactions.length);
+      m.set(`${row.type}\0${actualKey(row.category, row.subCategory)}`, { actual: row.actual, count: row.transactions.length });
     }
     return m;
   }, [activity.data]);
@@ -194,46 +230,89 @@ export function Budget() {
     )?.transactions ?? [];
   }, [drilldown, activity.data]);
 
-  const totals = useMemo(() => {
-    let plannedIncome = 0;
-    let earnedIncome = 0;
-    let plannedExpense = 0;
-    let spentExpense = 0;
-    for (const c of cats.data ?? []) {
-      for (const s of c.subCategories) {
-        const planned = mergedPlanned.get(s.id) ?? s.planned;
-        if (c.type === 'income') {
-          plannedIncome += planned;
-          earnedIncome += earnedMap.get(actualKey(c.name, s.name)) ?? 0;
-        } else if (c.type === 'expense') {
-          plannedExpense += planned;
-          spentExpense += spentMap.get(actualKey(c.name, s.name)) ?? 0;
-        }
-      }
+  const incomeCats = useMemo(() => (cats.data ?? []).filter((c) => c.type === 'income'), [cats.data]);
+  const expenseCats = useMemo(() => (cats.data ?? []).filter((c) => c.type === 'expense'), [cats.data]);
+
+  /** Income (all income categories merged, as before) and one group per expense category. */
+  const { incomeGroup, expenseGroups, slices } = useMemo(() => {
+    const toLines = (list: MainCategory[], type: 'income' | 'expense'): LineModel[] =>
+      list.flatMap((c) => c.subCategories.map((s) => {
+        const a = activityMap.get(`${type}\0${actualKey(c.name, s.name)}`);
+        return {
+          id: s.id,
+          name: s.name,
+          categoryName: c.name,
+          planned: mergedPlanned.get(s.id) ?? s.planned,
+          actual: a?.actual ?? 0,
+          count: a?.count ?? 0,
+        };
+      }));
+    const toGroup = (key: string, name: string, type: 'income' | 'expense', lines: LineModel[], color: string): GroupModel => {
+      const planned = sumMoney(lines.map((l) => l.planned));
+      const actual = sumMoney(lines.map((l) => l.actual));
+      return { key, name, type, color, lines, planned, actual, empty: planned === 0 && actual === 0 };
+    };
+
+    const income = toGroup('Income', 'Income', 'income', toLines(incomeCats, 'income'), INCOME_COLOR);
+    const expenses = expenseCats.map((c) => toGroup(c.name, c.name, 'expense', toLines([c], 'expense'), OTHER_GROUP_COLOR));
+
+    // Colour the largest planned groups; when more than eight are budgeted,
+    // the rest share the last colour and one "Smaller groups" slice.
+    const ranked = expenses.filter((g) => g.planned > 0).sort((a, b) => b.planned - a.planned);
+    const named = ranked.length <= GROUP_COLORS.length + 1 ? ranked.length : GROUP_COLORS.length;
+    ranked.forEach((g, i) => { g.color = i < named && i < GROUP_COLORS.length ? GROUP_COLORS[i]! : OTHER_GROUP_COLOR; });
+    const pieSlices: PlannedSpendingSlice[] = ranked.slice(0, named).map((g) => ({ name: g.name, color: g.color, planned: g.planned, actual: g.actual }));
+    const rest = ranked.slice(named);
+    if (rest.length > 0) {
+      pieSlices.push({
+        name: 'Smaller groups',
+        color: OTHER_GROUP_COLOR,
+        planned: sumMoney(rest.map((g) => g.planned)),
+        actual: sumMoney(rest.map((g) => g.actual)),
+      });
     }
+    return { incomeGroup: income, expenseGroups: expenses, slices: pieSlices };
+  }, [incomeCats, expenseCats, activityMap, mergedPlanned]);
+
+  const totals = useMemo(() => {
+    const plannedIncome = incomeGroup.planned;
+    const earnedIncome = incomeGroup.actual;
+    const plannedExpense = sumMoney(expenseGroups.map((g) => g.planned));
+    const spentExpense = sumMoney(expenseGroups.map((g) => g.actual));
     // Prefer the saved paydown snapshot (what "Save to Budget" wrote).
     // Fall back to live account planned/min only when no snapshot rows exist.
     // Apply in-progress paydown live overrides so Left-to-budget tracks edits.
     const snapshotRows = paydownSnapshot.data?.rows ?? [];
     let plannedDebt = 0;
-    const actualDebt = snapshotRows.reduce((sum, r) => sum + r.actual, 0);
+    const actualDebt = sumMoney(snapshotRows.map((r) => r.actual));
     if (snapshotRows.length > 0) {
-      plannedDebt = snapshotRows.reduce((sum, r) => sum + (currentPaydownLive.get(r.accountId) ?? r.planned), 0);
+      plannedDebt = sumMoney(snapshotRows.map((r) => currentPaydownLive.get(r.accountId) ?? r.planned));
     } else {
+      const amounts: number[] = [];
       for (const a of accounts.data ?? []) {
         if (!a.includeInPaydown) continue;
         if (a.type !== 'credit' && a.type !== 'loan') continue;
         if (currentPaydownLive.has(a.id)) {
-          plannedDebt += currentPaydownLive.get(a.id)!;
+          amounts.push(currentPaydownLive.get(a.id)!);
           continue;
         }
         // Zero-balance included debts don't need budgeted payment.
         if (a.balance <= 0) continue;
-        plannedDebt += a.plannedPayment > 0 ? a.plannedPayment : a.minPayment ?? 0;
+        amounts.push(a.plannedPayment > 0 ? a.plannedPayment : a.minPayment ?? 0);
       }
+      plannedDebt = sumMoney(amounts);
     }
     return { plannedIncome, earnedIncome, plannedExpense, spentExpense, plannedDebt, actualDebt };
-  }, [cats.data, mergedPlanned, earnedMap, spentMap, accounts.data, paydownSnapshot.data, currentPaydownLive]);
+  }, [incomeGroup, expenseGroups, accounts.data, paydownSnapshot.data, currentPaydownLive]);
+
+  const setCellError = useCallback((key: string, message?: string) => {
+    setCellErrors((prev) => {
+      if (!message && !prev.has(key)) return prev;
+      const next = new Map(prev);
+      if (message) next.set(key, message); else next.delete(key);
+      return next;
+    });
+  }, []);
 
   const setLiveOverride = useCallback((id: string, value: number) => {
     if (value < 0) return;
@@ -250,7 +329,8 @@ export function Budget() {
       next.delete(key);
       return next;
     });
-  }, [ym]);
+    setCellError(key);
+  }, [ym, setCellError]);
 
   const clearLiveOverride = useCallback((id: string) => {
     const key = draftKey(ym, id);
@@ -266,7 +346,8 @@ export function Budget() {
       next.delete(key);
       return next;
     });
-  }, [ym]);
+    setCellError(key);
+  }, [ym, setCellError]);
 
   const commitOverride = useCallback(async (id: string, type: 'income' | 'expense') => {
     const key = draftKey(ym, id);
@@ -279,6 +360,7 @@ export function Budget() {
     }
     budgetInFlight.current.add(key);
     setBudgetStatuses((prev) => new Map(prev).set(key, 'saving'));
+    setCellError(key);
     try {
       const result = await setBudget.mutateAsync({ subCategoryId: id, yearMonth: ym, planned: live });
       await qc.invalidateQueries({ queryKey: ['budget', ym] }, { throwOnError: true });
@@ -314,12 +396,13 @@ export function Budget() {
           },
         });
       }
-    } catch {
+    } catch (error) {
       setBudgetStatuses((prev) => new Map(prev).set(key, 'error'));
+      setCellError(key, (error as Error).message || 'Could not save.');
     } finally {
       budgetInFlight.current.delete(key);
     }
-  }, [serverPlannedMap, setBudget, applyFuture, qc, ym, clearLiveOverride]);
+  }, [serverPlannedMap, setBudget, applyFuture, qc, ym, clearLiveOverride, setCellError]);
 
   const setPaydownLiveOverride = useCallback((accountId: string, value: number) => {
     if (value < 0) return;
@@ -336,7 +419,8 @@ export function Budget() {
       next.delete(key);
       return next;
     });
-  }, [ym]);
+    setCellError(key);
+  }, [ym, setCellError]);
 
   const resetPaydownOverride = useCallback((accountId: string) => {
     const key = draftKey(ym, accountId);
@@ -351,7 +435,8 @@ export function Budget() {
       next.delete(key);
       return next;
     });
-  }, [ym]);
+    setCellError(key);
+  }, [ym, setCellError]);
 
   const commitPaydownOverride = useCallback(async (accountId: string) => {
     const key = draftKey(ym, accountId);
@@ -364,6 +449,7 @@ export function Budget() {
     }
     paydownInFlight.current.add(key);
     setPaydownStatuses((prev) => new Map(prev).set(key, 'saving'));
+    setCellError(key);
     try {
       await setPaydownPlanned.mutateAsync({ accountId, yearMonth: ym, planned: live });
       await Promise.all([
@@ -379,28 +465,45 @@ export function Budget() {
         });
         setPaydownStatuses((prev) => new Map(prev).set(key, 'saved'));
       }
-    } catch {
+    } catch (error) {
+      // Surface the server's reason, e.g. a planned payment below the account minimum.
       setPaydownStatuses((prev) => new Map(prev).set(key, 'error'));
+      setCellError(key, (error as Error).message || 'Could not save.');
     } finally {
       paydownInFlight.current.delete(key);
     }
-  }, [paydownSnapshot.data, setPaydownPlanned, qc, ym, resetPaydownOverride]);
+  }, [paydownSnapshot.data, setPaydownPlanned, qc, ym, resetPaydownOverride, setCellError]);
 
-  const toggleCollapsed = useCallback((id: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+  // Empty expense groups start collapsed once anything is budgeted; a brand-new
+  // budget stays expanded so onboarding can point at the first fields.
+  const anyBudgeted = totals.plannedExpense > 0;
+  const isGroupOpen = useCallback((key: string, collapsedByDefault: boolean) => groupOpen[key] ?? !collapsedByDefault, [groupOpen]);
+  const setGroupState = useCallback((key: string, open: boolean) => {
+    setGroupOpen((prev) => {
+      const next = { ...prev, [key]: open };
+      writeStored(GROUP_STATE_KEY, next);
       return next;
     });
   }, []);
-
-  const jumpToPaydown = useCallback(() => {
-    document.getElementById(PAYDOWN_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const toggleHideUnbudgeted = useCallback((checked: boolean) => {
+    setHideUnbudgeted(checked);
+    writeStored(HIDE_UNBUDGETED_KEY, checked);
   }, []);
+
+  const paydownRows = paydownSnapshot.data?.rows ?? [];
+  const paydownOpen = isGroupOpen(PAYDOWN_KEY, false);
+  const jumpToPaydown = useCallback(() => {
+    if (!paydownOpen) setGroupState(PAYDOWN_KEY, true);
+    window.requestAnimationFrame(() => {
+      document.getElementById(PAYDOWN_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [paydownOpen, setGroupState]);
   const closeDrilldown = useCallback(() => setDrilldown(null), []);
 
-  const incomeCats = (cats.data ?? []).filter((c) => c.type === 'income');
-  const expenseCats = (cats.data ?? []).filter((c) => c.type === 'expense');
+  const hiddenCount = [incomeGroup, ...expenseGroups].reduce((n, g) => n + g.lines.filter(isUnbudgeted).length, 0);
+  const visibleLines = (g: GroupModel) => (hideUnbudgeted ? g.lines.filter((l) => !isUnbudgeted(l)) : g.lines);
+  const shownGroups = [incomeGroup, ...expenseGroups].filter((g) => !hideUnbudgeted || !g.empty);
+
   const hasWorkspace = !!cats.data && !!accounts.data && !!budgets.data && !!activity.data;
   const loading = !hasWorkspace && (cats.isLoading || budgets.isLoading || activity.isLoading || accounts.isLoading);
   const failed = !hasWorkspace && (cats.isError || budgets.isError || activity.isError || accounts.isError);
@@ -409,11 +512,87 @@ export function Budget() {
     void Promise.all([cats.refetch(), budgets.refetch(), activity.refetch(), accounts.refetch(), paydownSnapshot.refetch()]);
   };
 
+  const renderGroup = (g: GroupModel, first: boolean) => {
+    const isIncome = g.type === 'income';
+    const open = isGroupOpen(g.key, g.type === 'expense' && g.empty && anyBudgeted);
+    const lines = visibleLines(g);
+    return (
+      <BudgetGroup
+        key={g.key}
+        name={g.name}
+        color={g.color}
+        planned={g.planned}
+        actual={g.actual}
+        open={open}
+        onToggle={() => setGroupState(g.key, !open)}
+        isIncome={isIncome}
+        first={first}
+        note={open ? undefined : (
+          <span className="hidden text-xs whitespace-nowrap text-muted-foreground sm:inline">
+            {g.lines.length} {g.lines.length === 1 ? 'category' : 'categories'}
+          </span>
+        )}
+      >
+        {lines.map((line, index) => {
+          const key = draftKey(ym, line.id);
+          return (
+            <BudgetLine
+              key={line.id}
+              planned={line.planned}
+              actual={line.actual}
+              isIncome={isIncome}
+              actualVerb={isIncome ? 'earned' : 'spent'}
+              label={(
+                <Button
+                  type="button"
+                  variant="link"
+                  onClick={() => setDrilldown({ category: line.categoryName, subCategory: line.name, type: g.type })}
+                  title={`View transactions for ${line.name}`}
+                  className="h-auto max-w-full justify-start gap-1.5 px-0 text-left text-sm font-normal text-foreground"
+                >
+                  <span className="truncate">{line.name}</span>
+                  {line.count > 0 && <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{line.count}</span>}
+                  <ChevronRight data-icon="inline-end" aria-hidden="true" className="text-muted-foreground sm:opacity-0 sm:group-focus-within/row:opacity-100 sm:group-hover/row:opacity-100" />
+                </Button>
+              )}
+              budget={(
+                <PlannedInput
+                  value={line.planned}
+                  label={`Budget for ${line.name}`}
+                  status={budgetStatuses.get(key)}
+                  errorMessage={cellErrors.get(key)}
+                  onboardingTarget={index === 0 ? (isIncome ? 'budget-plan-income' : 'budget-plan-expense') : undefined}
+                  onChange={(v) => setLiveOverride(line.id, v)}
+                  onCommit={() => commitOverride(line.id, g.type)}
+                  onReset={() => clearLiveOverride(line.id)}
+                />
+              )}
+            />
+          );
+        })}
+      </BudgetGroup>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-foreground">Budget</h1>
-        <MonthPicker value={ym} onChange={setYm} />
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:gap-6">
+          <div className="flex items-center gap-2.5">
+            <Switch
+              id={hideId}
+              checked={hideUnbudgeted}
+              onCheckedChange={toggleHideUnbudgeted}
+              aria-describedby={hideUnbudgeted ? `${hideId}-count` : undefined}
+            />
+            <Label htmlFor={hideId} className="font-normal fg-tertiary">Hide unbudgeted</Label>
+            {hideUnbudgeted && (
+              <span id={`${hideId}-count`} className="text-sm text-muted-foreground tabular-nums">{hiddenCount} hidden</span>
+            )}
+          </div>
+          <MonthPicker value={ym} onChange={setYm} />
+        </div>
       </div>
 
       {loading ? (
@@ -425,95 +604,56 @@ export function Budget() {
           onRetry={retry}
         />
       ) : (
-        /* Mobile: single-column flow (summary then sections) inside the
-             main scroll. Desktop: two-column layout with the leftover
-             panel sticky so it stays in view while assigning lower groups. */
+        /* Phone: summary first, then the table. Desktop: table on the left,
+           the summary panel sticky on the right while assigning lower groups. */
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
-        <div className="shrink-0 lg:sticky lg:top-8 lg:order-2 lg:w-96">
-          <BudgetSummaryBox
-            plannedIncome={totals.plannedIncome}
-            earnedIncome={totals.earnedIncome}
-            plannedExpense={totals.plannedExpense}
-            spentExpense={totals.spentExpense}
-            plannedDebt={totals.plannedDebt}
-            actualDebt={totals.actualDebt}
-            loading={false}
-            onJumpToPaydown={jumpToPaydown}
-          />
-        </div>
+          <div className="shrink-0 lg:sticky lg:top-8 lg:order-2 lg:w-84">
+            <BudgetSummaryBox
+              plannedIncome={totals.plannedIncome}
+              earnedIncome={totals.earnedIncome}
+              plannedExpense={totals.plannedExpense}
+              spentExpense={totals.spentExpense}
+              plannedDebt={totals.plannedDebt}
+              actualDebt={totals.actualDebt}
+              slices={slices}
+              loading={false}
+              onJumpToPaydown={jumpToPaydown}
+            />
+          </div>
 
-        <div className="min-w-0 flex-1 flex flex-col gap-6">
-          <>
-              {refreshFailed && (
-                <Alert variant="destructive">
-                  <AlertDescription>This month could not be refreshed.</AlertDescription>
-                  <AlertAction>
-                    <Button type="button" size="sm" variant="outline" onClick={retry}>Retry</Button>
-                  </AlertAction>
-                </Alert>
-              )}
-              {incomeCats.length > 0 ? (
-                <BudgetSection
-                  title="Income"
-                  cats={incomeCats}
-                  plannedMap={mergedPlanned}
-                  amountMap={earnedMap}
-                  countMap={txnCountMap}
-                  amountType="earned"
-                  collapsed={collapsed}
-                  onToggleCollapsed={toggleCollapsed}
-                  onLiveChange={setLiveOverride}
-                  onLiveCommit={(id) => commitOverride(id, 'income')}
-                  onLiveReset={clearLiveOverride}
-                  statuses={budgetStatuses}
-                  yearMonth={ym}
-                  onOpenDrilldown={setDrilldown}
-                />
-              ) : (
-                <EmptyCategoriesCard type="income" />
-              )}
-
-              {expenseCats.length === 0 ? (
-                <EmptyCategoriesCard type="expense" />
-              ) : (
-                expenseCats.map((cat) => (
-                  <BudgetSection
-                    key={cat.id}
-                    title={cat.name}
-                    cats={[cat]}
-                    plannedMap={mergedPlanned}
-                    amountMap={spentMap}
-                    countMap={txnCountMap}
-                    amountType="spent"
-                    collapsed={collapsed}
-                    onToggleCollapsed={toggleCollapsed}
-                    onLiveChange={setLiveOverride}
-                    onLiveCommit={(id) => commitOverride(id, 'expense')}
-                    onLiveReset={clearLiveOverride}
-                    statuses={budgetStatuses}
-                    yearMonth={ym}
-                    onOpenDrilldown={setDrilldown}
-                  />
-                ))
-              )}
-
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+            {refreshFailed && (
+              <Alert variant="destructive">
+                <AlertDescription>This month could not be refreshed.</AlertDescription>
+                <AlertAction>
+                  <Button type="button" size="sm" variant="outline" onClick={retry}>Retry</Button>
+                </AlertAction>
+              </Alert>
+            )}
+            <Card className="gap-0 py-0">
+              <BudgetColumnHeader />
+              {incomeCats.length === 0 && <EmptyCategories type="income" />}
+              {shownGroups.map((g, i) => renderGroup(g, i === 0))}
+              {expenseCats.length === 0 && <EmptyCategories type="expense" />}
               <PaydownBudgetSection
                 id={PAYDOWN_SECTION_ID}
-                rows={paydownSnapshot.data?.rows ?? []}
+                rows={paydownRows}
                 meta={paydownSnapshot.data?.meta ?? { syncedAt: null, rowCount: 0 }}
-                collapsed={collapsed}
-                onToggleCollapsed={toggleCollapsed}
+                open={paydownOpen}
+                onToggle={() => setGroupState(PAYDOWN_KEY, !paydownOpen)}
+                color={PAYDOWN_COLOR}
                 livePlanned={currentPaydownLive}
                 onLiveChange={setPaydownLiveOverride}
                 onLiveCommit={commitPaydownOverride}
                 onLiveReset={resetPaydownOverride}
-                statuses={new Map((paydownSnapshot.data?.rows ?? []).map((row) => [row.accountId, paydownStatuses.get(draftKey(ym, row.accountId))]))}
+                statuses={new Map(paydownRows.map((row) => [row.accountId, paydownStatuses.get(draftKey(ym, row.accountId))]))}
+                errorMessages={new Map(paydownRows.map((row) => [row.accountId, cellErrors.get(draftKey(ym, row.accountId))]))}
                 loading={paydownSnapshot.isLoading && !paydownSnapshot.data}
                 error={paydownSnapshot.isError && !paydownSnapshot.data}
                 onRetry={() => void paydownSnapshot.refetch()}
               />
-          </>
-        </div>
+            </Card>
+          </div>
         </div>
       )}
       {drilldown && (
@@ -529,26 +669,9 @@ export function Budget() {
   );
 }
 
-interface BudgetSectionProps {
-  title: string;
-  cats: MainCategory[];
-  plannedMap: Map<string, number>;
-  amountMap: Map<string, number>;
-  countMap: Map<string, number>;
-  amountType: 'earned' | 'spent';
-  collapsed: Set<string>;
-  onToggleCollapsed: (id: string) => void;
-  onLiveChange: (id: string, value: number) => void;
-  onLiveCommit: (id: string) => void;
-  onLiveReset: (id: string) => void;
-  statuses: Map<string, PlannedCellStatus>;
-  yearMonth: string;
-  onOpenDrilldown: (selection: BudgetDrilldown) => void;
-}
-
-function EmptyCategoriesCard({ type }: { type: 'income' | 'expense' }) {
+function EmptyCategories({ type }: { type: 'income' | 'expense' }) {
   return (
-    <Empty className="border border-dashed">
+    <Empty className="border-t">
       <EmptyHeader>
         <EmptyMedia variant="icon"><BarChart3 /></EmptyMedia>
         <EmptyTitle>No {type} categories yet</EmptyTitle>
@@ -557,303 +680,6 @@ function EmptyCategoriesCard({ type }: { type: 'income' | 'expense' }) {
         </EmptyDescription>
       </EmptyHeader>
     </Empty>
-  );
-}
-
-function BudgetSection({
-  title,
-  cats,
-  plannedMap,
-  amountMap,
-  countMap,
-  amountType,
-  collapsed,
-  onToggleCollapsed,
-  onLiveChange,
-  onLiveCommit,
-  onLiveReset,
-  statuses,
-  yearMonth,
-  onOpenDrilldown,
-}: BudgetSectionProps) {
-  const isCollapsed = collapsed.has(title);
-  const allSubs = cats.flatMap((c) => c.subCategories.map((sub) => ({ sub, categoryName: c.name })));
-  const totalPlanned = allSubs.reduce((s, x) => s + (plannedMap.get(x.sub.id) ?? x.sub.planned), 0);
-  const totalAmount = allSubs.reduce((s, x) => s + (amountMap.get(actualKey(x.categoryName, x.sub.name)) ?? 0), 0);
-  const isIncome = amountType === 'earned';
-  const totalRemaining = totalPlanned - totalAmount;
-
-  const headerBg = title === 'Income' ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : '';
-
-  return (
-    <Card className="gap-0 py-0">
-      <CardHeader className="p-0">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => onToggleCollapsed(title)}
-          className={clsx(
-            'h-auto w-full justify-between rounded-t-xl px-4 py-2 whitespace-normal',
-            headerBg,
-          )}
-          aria-expanded={!isCollapsed}
-        >
-          <CardTitle className="flex items-center gap-2">
-            {isCollapsed ? <ChevronRight data-icon="inline-start" className="text-muted-foreground" /> : <ChevronDown data-icon="inline-start" className="text-muted-foreground" />}
-            {title}
-          </CardTitle>
-          <div className="flex items-baseline gap-3 text-sm tabular-nums sm:gap-6">
-            <div className="hidden sm:block">
-              <span className="mr-2 text-xs uppercase tracking-wider text-muted-foreground">Planned</span>
-              <span className="font-semibold text-foreground">{formatMoney(totalPlanned)}</span>
-            </div>
-            <div className="hidden sm:block">
-              <span className="mr-2 text-xs uppercase tracking-wider text-muted-foreground">Actual</span>
-              <span className="font-semibold text-foreground">{formatMoney(totalAmount)}</span>
-            </div>
-            {isIncome ? (
-              <div className="sm:hidden">
-                <span className="mr-1 text-xs uppercase tracking-wider text-muted-foreground">Actual</span>
-                <span className="font-semibold text-foreground">{formatMoney(totalAmount)}</span>
-              </div>
-            ) : (
-              <div>
-                <span className="mr-1 text-xs uppercase tracking-wider text-muted-foreground sm:mr-2">Left</span>
-                <span className={clsx(
-                  'font-semibold',
-                  totalRemaining < 0
-                    ? 'text-rose-600 dark:text-rose-400'
-                    : 'text-emerald-600 dark:text-emerald-400',
-                )}>
-                  {formatMoney(totalRemaining)}
-                </span>
-              </div>
-            )}
-          </div>
-        </Button>
-      </CardHeader>
-
-      {!isCollapsed && (
-        <CardContent className="px-2 pt-1 pb-3 sm:px-4">
-          {/* Mobile: card-list layout. Desktop: full table. */}
-          <div className="divide-y sm:hidden">
-            {allSubs.map(({ sub, categoryName }, index) => {
-              const planned = plannedMap.get(sub.id) ?? sub.planned;
-              const amount = amountMap.get(actualKey(categoryName, sub.name)) ?? 0;
-              const txnCount = countMap.get(actualKey(categoryName, sub.name)) ?? 0;
-              const status = statuses.get(draftKey(yearMonth, sub.id));
-              const remaining = planned - amount;
-              const showProgress = planned > 0;
-              const progressPct = showProgress ? Math.min(100, (amount / planned) * 100) : 0;
-              const progressTone: 'emerald' | 'amber' | 'rose' =
-                amount > planned
-                  ? 'rose'
-                  : amount >= planned * 0.7
-                    ? 'amber'
-                    : 'emerald';
-              return (
-                <div key={sub.id} className="flex flex-col gap-1.5 py-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <Button
-                      type="button"
-                      variant="link"
-                      onClick={() => onOpenDrilldown({ category: categoryName, subCategory: sub.name, type: isIncome ? 'income' : 'expense' })}
-                      title={`View transactions for ${sub.name}`}
-                      className="inline-flex h-auto min-w-0 items-center justify-start gap-1 px-0 text-left text-sm font-medium text-foreground"
-                    >
-                      <span className="truncate">{sub.name}</span>
-                      {txnCount > 0 && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{txnCount}</span>}
-                      <ChevronRight data-icon="inline-end" className="text-muted-foreground" aria-hidden="true" />
-                    </Button>
-                    {isIncome ? (
-                      <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                        {formatMoney(amount)}
-                      </span>
-                    ) : (
-                      <span className={clsx(
-                        'shrink-0 text-sm font-semibold tabular-nums',
-                        remaining < 0
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : 'text-emerald-600 dark:text-emerald-400',
-                      )}>
-                        {formatMoney(remaining)}
-                      </span>
-                    )}
-                  </div>
-                  {showProgress && (
-                    <Progress
-                      value={progressPct}
-                      tone={isIncome ? 'emerald' : progressTone}
-                      className="w-full"
-                    />
-                  )}
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground">Planned</span>
-                      <Input
-                        data-onboarding-target={index === 0 ? (isIncome ? 'budget-plan-income' : 'budget-plan-expense') : undefined}
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={planned}
-                        disabled={status === 'saving'}
-                        onFocus={(event) => {
-                          if (event.currentTarget.value === '0') event.currentTarget.select();
-                        }}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (Number.isFinite(v)) onLiveChange(sub.id, v);
-                        }}
-                        onBlur={() => onLiveCommit(sub.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') onLiveCommit(sub.id);
-                          if (e.key === 'Escape') onLiveReset(sub.id);
-                        }}
-                        className={PLANNED_INPUT_CLS}
-                      />
-                      <CellFeedback status={status} onRetry={() => onLiveCommit(sub.id)} />
-                    </div>
-                    <span className="tabular-nums text-muted-foreground">
-                      {formatMoney(amount)} {amountType}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-            {/* Mobile totals row */}
-            <div className="flex items-center justify-between gap-2 py-2.5">
-              <span className="text-sm font-semibold text-foreground">Total</span>
-              <div className="flex items-center gap-3 text-xs tabular-nums">
-                <span className="text-muted-foreground">{formatMoney(totalPlanned)} planned</span>
-                {isIncome ? (
-                  <span className="text-sm font-semibold text-foreground">{formatMoney(totalAmount)}</span>
-                ) : (
-                  <span className={clsx(
-                    'text-sm font-semibold',
-                    totalRemaining < 0
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-emerald-600 dark:text-emerald-400',
-                  )}>
-                    {formatMoney(totalRemaining)}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Desktop table — unchanged */}
-          <table className="hidden w-full table-fixed text-sm sm:table">
-            <colgroup>
-              <col />
-              <col className="w-32" />
-              <col className="w-32" />
-              {!isIncome && <col className="w-32" />}
-            </colgroup>
-            <thead>
-              <tr className="text-left text-xs uppercase text-muted-foreground">
-                <th className="py-1">Sub-category</th>
-                <th className="py-1 pl-6 text-right">Planned</th>
-                <th className="py-1 pl-10 text-right">Actual</th>
-                {!isIncome && <th className="py-1 pl-6 text-right">Remaining</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {allSubs.map(({ sub, categoryName }, index) => {
-                const planned = plannedMap.get(sub.id) ?? sub.planned;
-                const amount = amountMap.get(actualKey(categoryName, sub.name)) ?? 0;
-                const txnCount = countMap.get(actualKey(categoryName, sub.name)) ?? 0;
-                const status = statuses.get(draftKey(yearMonth, sub.id));
-                const remaining = planned - amount;
-                const showProgress = planned > 0;
-                const progressPct = showProgress ? Math.min(100, (amount / planned) * 100) : 0;
-                const progressTone: 'emerald' | 'amber' | 'rose' =
-                  amount > planned
-                    ? 'rose'
-                    : amount >= planned * 0.7
-                      ? 'amber'
-                      : 'emerald';
-                return (
-                  <tr key={sub.id}>
-                    <td className="py-2 text-foreground">
-                      <Button
-                        type="button"
-                        variant="link"
-                        onClick={() => onOpenDrilldown({ category: categoryName, subCategory: sub.name, type: isIncome ? 'income' : 'expense' })}
-                        title={`View transactions for ${sub.name}`}
-                        className="inline-flex h-auto max-w-full items-center justify-start gap-1 px-0 text-left"
-                      >
-                        <span className="truncate">{sub.name}</span>
-                        {txnCount > 0 && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{txnCount}</span>}
-                        <ChevronRight data-icon="inline-end" className="text-muted-foreground" aria-hidden="true" />
-                      </Button>
-                      {showProgress && (
-                        <Progress
-                          value={progressPct}
-                          tone={isIncome ? 'emerald' : progressTone}
-                          className="mt-1.5 max-w-xs"
-                        />
-                      )}
-                    </td>
-                    <td className="py-2 pl-6 text-right">
-                      <Input
-                        data-onboarding-target={index === 0 ? (isIncome ? 'budget-plan-income' : 'budget-plan-expense') : undefined}
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={planned}
-                        disabled={status === 'saving'}
-                        onFocus={(event) => {
-                          if (event.currentTarget.value === '0') event.currentTarget.select();
-                        }}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (Number.isFinite(v)) onLiveChange(sub.id, v);
-                        }}
-                        onBlur={() => onLiveCommit(sub.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') onLiveCommit(sub.id);
-                          if (e.key === 'Escape') onLiveReset(sub.id);
-                        }}
-                        className={PLANNED_INPUT_CLS}
-                      />
-                      <CellFeedback status={status} onRetry={() => onLiveCommit(sub.id)} />
-                    </td>
-                    <td className="py-2 pl-10 text-right">
-                      <div className="tabular-nums text-muted-foreground">{formatMoney(amount)}</div>
-                    </td>
-                    {!isIncome && (
-                      <td className={clsx(
-                        'py-2 pl-6 text-right font-semibold tabular-nums',
-                        remaining < 0
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : 'text-emerald-600 dark:text-emerald-400',
-                      )}>
-                        {formatMoney(remaining)}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-              <tr>
-                <td className="py-2 font-semibold text-foreground">Total {title}</td>
-                <td className="py-2 pl-6 text-right font-semibold tabular-nums text-muted-foreground">{formatMoney(totalPlanned)}</td>
-                <td className="py-2 pl-10 text-right font-semibold tabular-nums text-muted-foreground">{formatMoney(totalAmount)}</td>
-                {!isIncome && (
-                  <td className={clsx(
-                    'py-2 pl-6 text-right font-semibold tabular-nums',
-                    totalRemaining < 0
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-emerald-600 dark:text-emerald-400',
-                  )}>
-                    {formatMoney(totalRemaining)}
-                  </td>
-                )}
-              </tr>
-            </tbody>
-          </table>
-        </CardContent>
-      )}
-    </Card>
   );
 }
 
@@ -1080,8 +906,8 @@ function BudgetTransactionsModal({
                         <span className={clsx(
                           'shrink-0 text-right text-sm font-semibold tabular-nums',
                           selection.type === 'income'
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-rose-600 dark:text-rose-400',
+                            ? 'text-emerald-400'
+                            : 'text-rose-400',
                         )}>
                           {selection.type === 'income' ? '+' : '−'}{formatMoney(row.amount)}
                         </span>
@@ -1278,7 +1104,7 @@ function MoveTransactionsDialog({
                       className={clsx(
                         'h-auto min-h-11 w-full justify-between px-3 py-2 text-left whitespace-normal',
                         selected
-                          ? 'bg-amber-100 font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+                          ? 'font-semibold bg-amber-900/40 text-amber-200'
                           : '',
                       )}
                     >
@@ -1321,15 +1147,5 @@ function MoveTransactionsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function CellFeedback({ status, onRetry }: { status?: PlannedCellStatus; onRetry: () => void }) {
-  if (status !== 'error') return null;
-  return (
-    <span className="mt-0.5 block text-xs text-destructive">
-      Error{' '}
-      <Button type="button" variant="link" size="sm" className="h-auto px-0" onMouseDown={(e) => e.preventDefault()} onClick={onRetry}>Retry</Button>
-    </span>
   );
 }

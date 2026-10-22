@@ -10,6 +10,8 @@
  *     budget carry-forwards forward before the user opens the app.
  *   - RETENTION_CRON runs daily at 04:00 UTC (after roll-forward). It is a
  *     no-op unless the operator opts in with RETENTION_DAYS > 0.
+ *   - MCP_AUTH_CLEANUP_CRON runs daily at 04:30 UTC and deletes expired
+ *     MCP device requests, tokens, and revoked or abandoned grants.
  *
  * Every run uses local exclusion plus a session-level PostgreSQL advisory
  * lock, so replicas can safely leave cron enabled. The lock session is
@@ -21,6 +23,7 @@ import { logger } from '@/lib/logger';
 import { runSimpleFinPollForAllUsers } from './simplefin-poll';
 import { runBudgetRollforward } from './budget-rollforward';
 import { runRetention } from './retention';
+import { cleanupMcpAuth } from '@/db/mcp-auth';
 import { resetDemoDatabase } from '@/db/demo-reset';
 import { env } from '@/lib/env';
 import { runExclusiveJob, waitForActiveJobs, type JobName } from './lifecycle';
@@ -29,6 +32,7 @@ import { runExclusiveJob, waitForActiveJobs, type JobName } from './lifecycle';
 const SIMPLEFIN_POLL_CRON = '17 */2 * * *'; // every 2 hours = 12 requests/day; avoid top-of-hour load
 const BUDGET_ROLLFORWARD_CRON = '0 0 1 * *'; // 1st of month, 00:00 UTC
 const RETENTION_CRON = '0 4 * * *'; // daily, 04:00 UTC
+const MCP_AUTH_CLEANUP_CRON = '30 4 * * *'; // daily, 04:30 UTC
 const DEMO_RESET_CRON = '*/15 * * * *'; // UTC quarter-hours
 
 export interface CronHandle {
@@ -71,7 +75,12 @@ export function startCron(): CronHandle {
   }
 
   logger.info(
-    { simplefin: SIMPLEFIN_POLL_CRON, rollforward: BUDGET_ROLLFORWARD_CRON, retention: RETENTION_CRON },
+    {
+      simplefin: SIMPLEFIN_POLL_CRON,
+      rollforward: BUDGET_ROLLFORWARD_CRON,
+      retention: RETENTION_CRON,
+      mcpAuthCleanup: MCP_AUTH_CLEANUP_CRON,
+    },
     'cron: starting',
   );
 
@@ -84,12 +93,16 @@ export function startCron(): CronHandle {
   if (!cron.validate(RETENTION_CRON)) {
     throw new Error(`invalid RETENTION_CRON: ${RETENTION_CRON}`);
   }
+  if (!cron.validate(MCP_AUTH_CLEANUP_CRON)) {
+    throw new Error(`invalid MCP_AUTH_CLEANUP_CRON: ${MCP_AUTH_CLEANUP_CRON}`);
+  }
 
   const options = { timezone: 'UTC' };
   const tasks: ScheduledTask[] = [
     cron.schedule(SIMPLEFIN_POLL_CRON, () => void runCronJob('simplefin-poll', runSimpleFinPollForAllUsers), options),
     cron.schedule(BUDGET_ROLLFORWARD_CRON, () => void runCronJob('budget-rollforward', runBudgetRollforward), options),
     cron.schedule(RETENTION_CRON, () => void runCronJob('retention', runRetention), options),
+    cron.schedule(MCP_AUTH_CLEANUP_CRON, () => void runCronJob('mcp-auth-cleanup', () => cleanupMcpAuth()), options),
   ];
 
   logger.info('cron: scheduled');

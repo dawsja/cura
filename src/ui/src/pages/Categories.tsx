@@ -193,10 +193,10 @@ export function Categories() {
               }}
               className="rounded-lg border"
             >
-              <ToggleGroupItem value="expense" className={clsx(newType === 'expense' && 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300')}>
+              <ToggleGroupItem value="expense" className={clsx(newType === 'expense' && 'bg-rose-900/40 text-rose-300')}>
                 <TrendingDown data-icon="inline-start" /> Expense
               </ToggleGroupItem>
-              <ToggleGroupItem value="income" className={clsx(newType === 'income' && 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300')}>
+              <ToggleGroupItem value="income" className={clsx(newType === 'income' && 'bg-emerald-900/40 text-emerald-300')}>
                 <TrendingUp data-icon="inline-start" /> Income
               </ToggleGroupItem>
               <ToggleGroupItem value="transfer">
@@ -312,8 +312,8 @@ function CategoryGroup({
   disabled?: boolean;
 }) {
   const toneClass =
-    tone === 'rose' ? 'bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300' :
-    tone === 'emerald' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300' :
+    tone === 'rose' ? 'bg-rose-900/30 text-rose-300' :
+    tone === 'emerald' ? 'bg-emerald-900/30 text-emerald-300' :
     'bg-muted text-muted-foreground';
 
   // Drag-to-reorder via Pointer Events.
@@ -633,7 +633,7 @@ function CategoryGroup({
               <div
                 key={row.key}
                 aria-hidden
-                className="rounded-xl border-2 border-dashed border-amber-400/70 bg-amber-50/40 dark:border-amber-500/50 dark:bg-amber-900/10"
+                className="rounded-xl border-2 border-dashed border-amber-500/50 bg-amber-900/10"
                 style={{ height: drag?.height ?? 80 }}
               />
             );

@@ -40,8 +40,8 @@ function useIsMobile(): boolean {
  *     app's screen change. Desktop (md+) renders routes with no
  *     remount and no animation — identical to before.
  *
- *   Sidebar is icon-only (Monarch-style) by default and expands while
- *   hovered or while one of its controls has keyboard focus.
+ *   Sidebar is icon-only by default; the logo becomes an "open sidebar"
+ *   button on hover/focus and the expanded panel has a close button.
  */
 export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();

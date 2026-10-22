@@ -10,14 +10,22 @@ import {
 } from './ui/dialog';
 import { Alert, AlertDescription } from './ui/alert';
 import { Button } from './ui/button';
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from './ui/field';
+import { CategoryPicker, PAYDOWN_CATEGORY } from './CategoryPicker';
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSeparator,
+  FieldSet,
+} from './ui/field';
 import { Input } from './ui/input';
 import {
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from './ui/select';
@@ -107,12 +115,7 @@ export function RuleFormModal({
   const [err, setErr] = useState<string | null>(null);
 
   const trimmed = merchant.trim();
-  const sourceCategoryPick = sourceCategory && sourceSubCategory
-    ? JSON.stringify({ category: sourceCategory, subCategory: sourceSubCategory })
-    : '';
-  const categoryPick = category && subCategory
-    ? JSON.stringify({ category, subCategory })
-    : '';
+  const categoryPick = category && subCategory ? { category, subCategory } : null;
   const targetExists = categories.some((candidate) =>
     candidate.name === category
     && candidate.subCategories.some((sub) => sub.name === subCategory)
@@ -187,192 +190,162 @@ export function RuleFormModal({
         if (!open && !submitting) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{mode === 'create' ? 'Create rule' : 'Edit rule'}</DialogTitle>
           <DialogDescription>
-            Match a merchant (and optional account, type, and category), then set the resulting assignment.
+            Choose which transactions this rule matches and how to file them.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <FieldGroup className="gap-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">When</p>
-            <Field>
-              <FieldLabel htmlFor="rule-merchant">Merchant</FieldLabel>
-              <Input
-                id="rule-merchant"
-                type="text"
-                value={merchant}
-                onChange={(e) => setMerchant(e.target.value)}
-                placeholder="e.g. Whole Foods Market"
-                maxLength={255}
-                autoFocus
-              />
-              <FieldDescription>
-                Case-insensitive. Matches this merchant exactly, or when the payee
-                starts with this text (e.g. &quot;Starbucks&quot; matches &quot;STARBUCKS #1234&quot;).
-              </FieldDescription>
-            </Field>
+        <form onSubmit={onSubmit} className="flex flex-col gap-6">
+          <FieldGroup className="gap-6">
+            <FieldSet>
+              <FieldLegend>Match</FieldLegend>
+              <FieldGroup className="gap-4">
+                <Field>
+                  <FieldLabel htmlFor="rule-merchant">Merchant</FieldLabel>
+                  <Input
+                    id="rule-merchant"
+                    type="text"
+                    value={merchant}
+                    onChange={(e) => setMerchant(e.target.value)}
+                    placeholder="e.g. Whole Foods Market"
+                    maxLength={255}
+                    autoFocus
+                  />
+                  <FieldDescription>
+                    Case-insensitive. Matches this merchant exactly, or when the payee
+                    starts with this text (e.g. &quot;Starbucks&quot; matches &quot;STARBUCKS #1234&quot;).
+                  </FieldDescription>
+                </Field>
 
-            <Field>
-              <FieldLabel>
-                Account <span className="font-normal text-muted-foreground">(optional)</span>
-              </FieldLabel>
-              <Select
-                value={accountId || ANY}
-                onValueChange={(value) => setAccountId(value === ANY ? '' : value)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Any account" />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectGroup>
-                    <SelectItem value={ANY}>Any account</SelectItem>
-                    {accounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
+                <Field>
+                  <FieldLabel htmlFor="rule-account">
+                    Account <span className="font-normal text-muted-foreground">(optional)</span>
+                  </FieldLabel>
+                  <Select
+                    value={accountId || ANY}
+                    onValueChange={(value) => setAccountId(value === ANY ? '' : value)}
+                  >
+                    <SelectTrigger id="rule-account" className="w-full">
+                      <SelectValue placeholder="Any account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value={ANY}>Any account</SelectItem>
+                        {accounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field>
+                  <FieldLabel>
+                    Original type <span className="font-normal text-muted-foreground">(optional)</span>
+                  </FieldLabel>
+                  <ToggleGroup
+                    type="single"
+                    variant="outline"
+                    value={sourceType || ANY}
+                    onValueChange={(next) => {
+                      if (!next) return;
+                      applySourceType(next === ANY ? '' : next as RuleFormTxType);
+                    }}
+                    className="w-full"
+                    aria-label="Original type"
+                  >
+                    <ToggleGroupItem value={ANY} className="flex-1">Any</ToggleGroupItem>
+                    {TYPE_OPTIONS.map((option) => (
+                      <ToggleGroupItem key={option.value} value={option.value} className="flex-1">
+                        {option.label}
+                      </ToggleGroupItem>
                     ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
+                  </ToggleGroup>
+                </Field>
 
-            <Field>
-              <FieldLabel>
-                Original type <span className="font-normal text-muted-foreground">(optional)</span>
-              </FieldLabel>
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                value={sourceType || ANY}
-                onValueChange={(next) => {
-                  if (!next) return;
-                  applySourceType(next === ANY ? '' : next as RuleFormTxType);
-                }}
-                className="w-full"
-              >
-                <ToggleGroupItem value={ANY} className="flex-1">Any</ToggleGroupItem>
-                {TYPE_OPTIONS.map((option) => (
-                  <ToggleGroupItem key={option.value} value={option.value} className="flex-1">
-                    {option.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-            </Field>
+                <Field>
+                  <FieldLabel>
+                    Original category <span className="font-normal text-muted-foreground">(optional)</span>
+                  </FieldLabel>
+                  <CategoryPicker
+                    categories={categories}
+                    type={sourceType || undefined}
+                    value={sourceCategory ? { category: sourceCategory, subCategory: sourceSubCategory } : null}
+                    anyLabel="Any category"
+                    aria-label="Original category"
+                    onSelect={(pick) => {
+                      // The original type is its own condition, so picking a
+                      // category never changes it.
+                      setSourceCategory(pick?.category ?? '');
+                      setSourceSubCategory(pick?.subCategory ?? '');
+                    }}
+                  />
+                  {sourceCategory && !sourceExistsInTree ? (
+                    <FieldDescription>
+                      {unchangedHistoricalSource
+                        ? `${sourceCategory}, ${sourceSubCategory} is no longer in your categories. The rule keeps matching it until you pick another.`
+                        : `${sourceCategory}, ${sourceSubCategory} isn't one of your categories for this type. Pick another category.`}
+                    </FieldDescription>
+                  ) : null}
+                </Field>
+              </FieldGroup>
+            </FieldSet>
 
-            <Field>
-              <FieldLabel>
-                Original category <span className="font-normal text-muted-foreground">(optional)</span>
-              </FieldLabel>
-              <Select
-                value={sourceCategoryPick || ANY}
-                onValueChange={(value) => {
-                  if (!value || value === ANY) {
-                    setSourceCategory('');
-                    setSourceSubCategory('');
-                    return;
-                  }
-                  const selected = JSON.parse(value) as { category: string; subCategory: string };
-                  setSourceCategory(selected.category);
-                  setSourceSubCategory(selected.subCategory);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Any category" />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectGroup>
-                    <SelectItem value={ANY}>Any category</SelectItem>
-                    {sourceCategoryPick && !sourceExistsInTree && (
-                      <SelectItem value={sourceCategoryPick}>
-                        Historical: {sourceCategory} › {sourceSubCategory}
-                      </SelectItem>
-                    )}
-                  </SelectGroup>
-                  {categories
-                    .filter((candidate) => !sourceType || candidate.type === sourceType || candidate.name === 'Pay down goals')
-                    .map((c) => (
-                    <SelectGroup key={c.id}>
-                      <SelectLabel>{c.name}</SelectLabel>
-                      {c.subCategories.map((s) => (
-                        <SelectItem
-                          key={s.id}
-                          value={JSON.stringify({ category: c.name, subCategory: s.name })}
-                        >
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+            <FieldSeparator />
 
-            <FieldSeparator>Then set</FieldSeparator>
+            <FieldSet>
+              <FieldLegend>File as</FieldLegend>
+              <FieldGroup className="gap-4">
+                <Field>
+                  <FieldLabel>Type</FieldLabel>
+                  <ToggleGroup
+                    type="single"
+                    variant="outline"
+                    value={type || undefined}
+                    onValueChange={(next) => {
+                      if (!next && preservesLegacyPaydownType) {
+                        applyType('');
+                        return;
+                      }
+                      if (!next) return;
+                      applyType(next as RuleFormTxType);
+                    }}
+                    className="w-full"
+                    aria-label="Type"
+                  >
+                    {TYPE_OPTIONS.map((option) => (
+                      <ToggleGroupItem key={option.value} value={option.value} className="flex-1">
+                        {option.label}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                  {preservesLegacyPaydownType && !type ? (
+                    <FieldDescription>Leave type unchanged (legacy rule)</FieldDescription>
+                  ) : null}
+                </Field>
 
-            <Field>
-              <FieldLabel>Type</FieldLabel>
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                value={type || undefined}
-                onValueChange={(next) => {
-                  if (!next && preservesLegacyPaydownType) {
-                    applyType('');
-                    return;
-                  }
-                  if (!next) return;
-                  applyType(next as RuleFormTxType);
-                }}
-                className="w-full"
-              >
-                {TYPE_OPTIONS.map((option) => (
-                  <ToggleGroupItem key={option.value} value={option.value} className="flex-1">
-                    {option.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              {preservesLegacyPaydownType && !type ? (
-                <FieldDescription>Leave type unchanged (legacy rule)</FieldDescription>
-              ) : null}
-            </Field>
-
-            <Field>
-              <FieldLabel>Category</FieldLabel>
-              <Select
-                value={categoryPick || undefined}
-                onValueChange={(value) => {
-                  if (!value) {
-                    setCategory('');
-                    setSubCategory('');
-                    return;
-                  }
-                  const selected = JSON.parse(value) as { category: string; subCategory: string };
-                  setCategory(selected.category);
-                  setSubCategory(selected.subCategory);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Pick a category…" />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  {categories
-                    .filter((candidate) => !type || candidate.type === type || candidate.name === 'Pay down goals')
-                    .map((c) => (
-                    <SelectGroup key={c.id}>
-                      <SelectLabel>{c.name}</SelectLabel>
-                      {c.subCategories.map((s) => (
-                        <SelectItem
-                          key={s.id}
-                          value={JSON.stringify({ category: c.name, subCategory: s.name })}
-                        >
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+                <Field>
+                  <FieldLabel>Category</FieldLabel>
+                  <CategoryPicker
+                    categories={categories}
+                    type={type || undefined}
+                    value={categoryPick}
+                    placeholder="Choose a category"
+                    aria-label="Category"
+                    onSelect={(pick) => {
+                      if (!pick) return;
+                      setCategory(pick.category);
+                      setSubCategory(pick.subCategory);
+                      // With no type chosen yet, take it from the category. Goal
+                      // paydown categories fit any type, so they leave it alone.
+                      if (!type && pick.category !== PAYDOWN_CATEGORY) setType(pick.type);
+                    }}
+                  />
+                </Field>
+              </FieldGroup>
+            </FieldSet>
 
             {err ? (
               <Alert variant="destructive">
@@ -392,7 +365,7 @@ export function RuleFormModal({
             </Button>
             <Button type="submit" disabled={!canSave}>
               {submitting ? <Spinner data-icon="inline-start" /> : <Check data-icon="inline-start" />}
-              {submitting ? 'Saving…' : mode === 'create' ? 'Create rule' : 'Save'}
+              {submitting ? 'Saving…' : mode === 'create' ? 'Create rule' : 'Save rule'}
             </Button>
           </DialogFooter>
         </form>

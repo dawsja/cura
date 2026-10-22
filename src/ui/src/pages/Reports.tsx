@@ -255,7 +255,7 @@ export function Reports() {
       return (
         <section>
           <div className="mb-3 flex items-center gap-2">
-            <ChartNoAxesColumnIncreasing className="h-4 w-4 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+            <ChartNoAxesColumnIncreasing className="h-4 w-4 text-amber-300" aria-hidden="true" />
             <div>
               <h2 className="text-sm font-semibold fg-primary">Financial snapshot</h2>
               <p className="text-xs fg-muted">Key totals for the selected report range</p>
@@ -333,13 +333,16 @@ export function Reports() {
   const displayedOrder = editing ? draftOrder : savedOrder;
   const displayedHidden = new Set(editing ? draftHidden : savedHidden);
   const visibleDisplayedOrder = displayedOrder.filter((widget) => !displayedHidden.has(widget));
+  // `min-w-0`: grid items default to their min-content width, so the
+  // horizontally scrolling snapshot strip would otherwise widen the whole
+  // single-column mobile grid past the viewport and clip every card.
   const reportItemClass = (widget: ReportWidgetId) => {
-    if (widget !== 'spending-by-category' && widget !== 'top-merchants') return 'flex flex-col lg:col-span-2';
+    if (widget !== 'spending-by-category' && widget !== 'top-merchants') return 'flex min-w-0 flex-col lg:col-span-2';
     const index = visibleDisplayedOrder.indexOf(widget);
     const neighbor = widget === 'spending-by-category' ? 'top-merchants' : 'spending-by-category';
     return visibleDisplayedOrder[index - 1] === neighbor || visibleDisplayedOrder[index + 1] === neighbor
-      ? 'flex flex-col'
-      : 'flex flex-col lg:col-span-2';
+      ? 'flex min-w-0 flex-col'
+      : 'flex min-w-0 flex-col lg:col-span-2';
   };
 
   return (
@@ -463,7 +466,7 @@ function ExportModal({
             onClick={download}
             className="group rounded-xl border border-border bg-muted/50 p-4 transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <FileSpreadsheet className="size-6 text-emerald-600 dark:text-emerald-400" />
+            <FileSpreadsheet className="size-6 text-emerald-400" />
             <span className="mt-3 block text-sm font-semibold group-hover:text-primary">Transactions CSV</span>
             <span className="mt-1 block text-xs text-muted-foreground">A spreadsheet-ready ledger of all transactions.</span>
           </a>
@@ -473,7 +476,7 @@ function ExportModal({
             onClick={download}
             className="group rounded-xl border border-border bg-muted/50 p-4 transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Archive className="size-6 text-sky-700 dark:text-sky-300" />
+            <Archive className="size-6 text-sky-300" />
             <span className="mt-3 block text-sm font-semibold group-hover:text-primary">Full JSON archive</span>
             <span className="mt-1 block text-xs text-muted-foreground">Accounts, transactions, budgets, goals, rules, and settings.</span>
           </a>
@@ -775,7 +778,7 @@ function NetWorthChart({ data, loading, error, onRetry }: { data: NetWorthPoint[
           key: point.month,
           cells: [
             monthYear(point.month),
-            <span key="value" className={clsx('tabular-nums', point.netWorth < 0 && 'text-rose-600 dark:text-rose-400')}>{formatMoney(point.netWorth)}</span>,
+            <span key="value" className={clsx('tabular-nums', point.netWorth < 0 && 'text-rose-400')}>{formatMoney(point.netWorth)}</span>,
           ],
         }))}
       />

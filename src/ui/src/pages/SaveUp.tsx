@@ -153,7 +153,7 @@ export function SaveUp() {
             <div className={clsx(
               'flex size-9 shrink-0 items-center justify-center rounded-full',
               reachedGoals.length > 0
-                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                ? 'bg-emerald-900/40 text-emerald-400'
                 : 'bg-primary/15 text-primary',
             )}>
               {reachedGoals.length > 0 ? <Sparkles className="size-4" /> : <TrendingUp className="size-4" />}
@@ -362,14 +362,14 @@ function GoalCard({
                   animate={{ scale: 1, rotate: 0 }}
                   transition={{ type: 'spring', stiffness: 320, damping: 16, delay: 0.35 }}
                 >
-                  <Trophy className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <Trophy className="size-4 shrink-0 text-emerald-400" />
                 </motion.span>
               ) : (
                 <Target className="size-4 shrink-0 text-primary" />
               )}
               <CardTitle className="truncate">{goal.name}</CardTitle>
               {reached && (
-                <Badge className="shrink-0 border-transparent bg-emerald-50 text-[10px] text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                <Badge className="shrink-0 border-transparent text-[10px] bg-emerald-900/50 text-emerald-300">
                   Goal reached
                 </Badge>
               )}
@@ -394,7 +394,7 @@ function GoalCard({
           </span>
         )}
         {sharedGoalCount > 0 && goal.accountId && (
-          <span className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-300">
+          <span className="inline-flex items-center gap-1 text-sky-300">
             <Link className="size-3.5" aria-hidden="true" />
             Shared with {sharedGoalCount} other {sharedGoalCount === 1 ? 'goal' : 'goals'}
           </span>
@@ -403,7 +403,7 @@ function GoalCard({
 
       <div className="mt-4 flex items-end justify-between gap-3 tabular-nums">
         <div>
-          <div className={clsx('text-xs font-semibold', reached ? 'text-emerald-600 dark:text-emerald-300' : 'text-muted-foreground')}>
+          <div className={clsx('text-xs font-semibold', reached ? 'text-emerald-300' : 'text-muted-foreground')}>
             {goalStatusLabel(pct, reached)}
           </div>
           <div className="mt-0.5 text-2xl font-bold text-foreground">
@@ -483,9 +483,9 @@ function AnimatedPercentage({ value, reached }: { value: number; reached: boolea
 }
 
 function progressTextClass(value: number, reached: boolean): string {
-  if (reached || value >= 75) return 'text-emerald-600 dark:text-emerald-300';
+  if (reached || value >= 75) return 'text-emerald-300';
   if (value >= 50) return 'text-primary';
-  if (value >= 25) return 'text-sky-700 dark:text-sky-300';
+  if (value >= 25) return 'text-sky-300';
   return 'text-violet-600';
 }
 

@@ -19,6 +19,13 @@ import { Button } from '../components/ui/button';
 import { Card, CardAction, CardContent, CardHeader } from '../components/ui/card';
 import { DatePicker } from '../components/ui/date-picker';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -69,9 +76,9 @@ const FREQUENCY_LABEL: Record<string, string> = {
 };
 
 const FREQUENCY_BADGE: Record<string, string> = {
-  weekly: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  monthly: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
-  yearly: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  weekly: 'bg-emerald-900/40 text-emerald-300',
+  monthly: 'bg-sky-900/40 text-sky-300',
+  yearly: 'bg-rose-900/40 text-rose-300',
 };
 
 /** Normalize any frequency to a monthly burn rate. */
@@ -249,7 +256,7 @@ export function Recurring() {
           <CardHeader>
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Due soon</p>
             <CardAction>
-              <CalendarDays className="size-4 text-sky-700 dark:text-sky-300" aria-hidden="true" />
+              <CalendarDays className="size-4 text-sky-300" aria-hidden="true" />
             </CardAction>
           </CardHeader>
           <CardContent>
@@ -330,7 +337,7 @@ export function Recurring() {
                     <div className="col-start-1 row-start-2 sm:col-start-2 sm:row-start-1">
                       <p className={clsx(
                         'inline-flex items-center gap-1 text-sm font-medium',
-                        charge.comingSoon ? 'text-sky-700 dark:text-sky-300' : 'text-muted-foreground',
+                        charge.comingSoon ? 'text-sky-300' : 'text-muted-foreground',
                       )}>
                         <CalendarDays className="size-4 shrink-0" aria-hidden="true" />
                         {daysLabel(charge.daysUntil)}
@@ -348,58 +355,47 @@ export function Recurring() {
                         </p>
                       </div>
 
-                      <details className="relative">
-                        <summary
-                          className="close-button flex size-11 cursor-pointer list-none items-center justify-center rounded-lg [&::-webkit-details-marker]:hidden"
-                          aria-label={`Actions for ${charge.merchant}`}
-                        >
-                          <Ellipsis className="size-5" aria-hidden="true" />
-                        </summary>
-                        <div className="absolute right-0 z-20 mt-1 min-w-44 rounded-lg border border-border bg-card p-1 shadow-xl">
-                          {charge.manual ? (
-                            <>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="h-11 w-full justify-start"
-                                onClick={(event) => {
-                                  event.currentTarget.closest('details')?.removeAttribute('open');
-                                  setEditing(charge);
-                                }}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button type="button" variant="ghost" size="icon" aria-label={`Actions for ${charge.merchant}`}>
+                            <Ellipsis />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuGroup>
+                            {charge.manual ? (
+                              <>
+                                <DropdownMenuItem onSelect={() => setEditing(charge)}>
+                                  <Pencil />
+                                  Edit recurring
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  disabled={deleteManual.isPending}
+                                  onSelect={() => { if (charge.id) deleteManual.mutate(charge.id); }}
+                                >
+                                  <Trash2 />
+                                  Delete recurring
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <DropdownMenuItem
+                                variant="destructive"
+                                disabled={dismiss.isPending}
+                                onSelect={() => dismiss.mutate({
+                                  merchant: charge.merchant,
+                                  amount: charge.amount,
+                                  account: charge.account,
+                                  accountId: charge.accountId,
+                                })}
                               >
-                                <Pencil data-icon="inline-start" aria-hidden="true" />
-                                Edit recurring
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="h-11 w-full justify-start text-destructive hover:text-destructive"
-                                onClick={() => charge.id && deleteManual.mutate(charge.id)}
-                                disabled={deleteManual.isPending}
-                              >
-                                <Trash2 data-icon="inline-start" aria-hidden="true" />
-                                Delete recurring
-                              </Button>
-                            </>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="h-11 w-full justify-start text-destructive hover:text-destructive"
-                              onClick={() => dismiss.mutate({
-                                merchant: charge.merchant,
-                                amount: charge.amount,
-                                account: charge.account,
-                                accountId: charge.accountId,
-                              })}
-                              disabled={dismiss.isPending}
-                            >
-                              <X data-icon="inline-start" aria-hidden="true" />
-                              Remove from recurring
-                            </Button>
-                          )}
-                        </div>
-                      </details>
+                                <X />
+                                Remove from recurring
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 ))}

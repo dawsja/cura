@@ -99,12 +99,14 @@ interface PaydownProjection {
   totalPaid: number;
   monthsToDebtFree: number | null;
   debtFreeMonth: string | null;
+  nonAmortizingIds: string[];
   perAccount: PaydownAccountResult[];
   timeline: PaydownPoint[];
   baselineTimeline: PaydownPoint[];
   baselineTotalInterest: number;
   baselineMonthsToDebtFree: number | null;
   baselineDebtFreeMonth: string | null;
+  baselineNonAmortizingIds: string[];
 }
 
 const EMPTY: PaydownProjection = {
@@ -115,12 +117,14 @@ const EMPTY: PaydownProjection = {
   totalPaid: 0,
   monthsToDebtFree: null,
   debtFreeMonth: null,
+  nonAmortizingIds: [],
   perAccount: [],
   timeline: [],
   baselineTimeline: [],
   baselineTotalInterest: 0,
   baselineMonthsToDebtFree: null,
   baselineDebtFreeMonth: null,
+  baselineNonAmortizingIds: [],
 };
 
 // Persist the savings-calculator scenario so leaving Pay down and
@@ -230,9 +234,11 @@ export function Paydown() {
 
   // Baseline projection — "Planned" with no extras. Drives the chart
   // when no simulation is active.
+  // Projections start in the browser's month, not the server's.
+  const startYm = currentYearMonth();
   const baseline = useQuery({
-    queryKey: ['paydown', 'projection'],
-    queryFn: () => api.get<PaydownProjection>('/api/paydown/projection'),
+    queryKey: ['paydown', 'projection', startYm],
+    queryFn: () => api.get<PaydownProjection>(`/api/paydown/projection?start=${startYm}`),
   });
 
   // Calculator state. Hydrated from localStorage so navigating away
@@ -266,12 +272,13 @@ export function Paydown() {
   }, [scenario]);
 
   const simulation = useQuery({
-    queryKey: ['paydown', 'simulate', method, monthlyExtraNum, oneTimeExtraNum],
+    queryKey: ['paydown', 'simulate', method, monthlyExtraNum, oneTimeExtraNum, startYm],
     queryFn: () =>
       api.post<PaydownProjection>('/api/paydown/simulate', {
         method,
         monthlyExtra: monthlyExtraNum,
         oneTimeExtra: oneTimeExtraNum,
+        start: startYm,
       }),
     enabled: showSim,
   });
@@ -442,21 +449,17 @@ export function Paydown() {
     .filter(({ account }) => account.includeInPaydown && account.balance > 0)
     .map(({ id, name, color }) => ({ id, name, color }));
 
-  // An account is "unpayable" when it's included in the paydown plan
-  // and has a balance but neither a minimum nor a planned payment.
-  // Without any payment the planned-method projection runs flat for
-  // the full 40-year horizon and the chart never produces a payoff
-  // date. Detect this so we can render ∞ + a "set a minimum payment"
-  // banner instead of a chart that looks broken.
-  const unpayableAccounts = accList.filter(
-    (a) => a.includeInPaydown && a.balance > 0 && (a.minPayment || 0) <= 0 && (a.plannedPayment || 0) <= 0,
-  );
-  const unpayableIds = new Set(unpayableAccounts.map((a) => a.id));
+  const hasIncludedDebt = chartSeries.length > 0;
+  // The projection reports accounts whose balance stops falling: what
+  // reaches them doesn't cover their interest. Its totals are then cut
+  // short, so they're replaced by a warning rather than shown as a cost.
+  const unpayableIds = new Set(projection.nonAmortizingIds ?? []);
+  const unpayableAccounts = accList.filter((a) => unpayableIds.has(a.id));
   const hasUnpayable = unpayableAccounts.length > 0;
-  // debtFreeMonth is null either because an account is unpayable OR
-  // because the 40-year horizon ran out (e.g. negative amortization at
-  // minimums). Distinguish the two so the sub-text is accurate.
-  const beyondHorizon = !hasUnpayable && projection.debtFreeMonth === null && projection.timeline.length > 0;
+  // Otherwise a missing payoff month means the 40-year horizon ran out.
+  const beyondHorizon = hasIncludedDebt && !hasUnpayable && projection.debtFreeMonth === null;
+  const monthlyInterest = (a: PaydownAccount) => a.balance * (a.interestRate / 12);
+  const hasNoPayment = (a: PaydownAccount) => (a.minPayment || 0) <= 0 && (a.plannedPayment || 0) <= 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -526,8 +529,8 @@ export function Paydown() {
           {/* Method banner — only when a scenario is active. Matches the
              Monarch-style "Utilizing the X Method" strip. */}
           {isSimulated && (
-            <Alert className="border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-900/30 dark:text-rose-100">
-              <AlertDescription className="text-rose-900 dark:text-rose-100">
+            <Alert className="border-rose-800 bg-rose-900/30 text-rose-100">
+              <AlertDescription className="text-rose-100">
                 <span className="text-muted-foreground">Utilizing the </span>
                 <span className="font-semibold capitalize">{methodLabel}</span>
                 {monthlyExtraNum > 0 && (
@@ -551,35 +554,45 @@ export function Paydown() {
             <SummaryCard
               icon={<Banknote className="h-4 w-4" />}
               label="Current debt"
-              sub="Across all accounts"
+              sub="Across included accounts"
               value={formatMoney(projection.startingTotal)}
               tone="slate"
             />
             <SummaryCard
               icon={<TrendingDown className="h-4 w-4" />}
               label={beyondHorizon ? 'Interest (40 years)' : 'Projected interest'}
-              sub={beyondHorizon ? 'Projection horizon only' : isSimulated ? 'Under this scenario' : 'Total interest to pay'}
-              value={formatMoney(projection.totalInterest)}
+              sub={
+                hasUnpayable
+                  ? 'Keeps growing at these payments'
+                  : beyondHorizon
+                    ? 'Projection horizon only'
+                    : isSimulated ? 'Under this scenario' : 'Total interest to pay'
+              }
+              value={hasUnpayable || !hasIncludedDebt ? '—' : formatMoney(projection.totalInterest)}
               tone="rose"
             />
             <SummaryCard
               icon={<Banknote className="h-4 w-4" />}
               label={beyondHorizon ? 'Paid (40 years)' : 'Total P + I'}
-              sub={beyondHorizon ? 'Projection horizon only' : 'Principal + interest'}
-              value={formatMoney(projection.totalPaid)}
+              sub={
+                hasUnpayable
+                  ? 'Keeps growing at these payments'
+                  : beyondHorizon ? 'Projection horizon only' : 'Principal + interest'
+              }
+              value={hasUnpayable || !hasIncludedDebt ? '—' : formatMoney(projection.totalPaid)}
               tone="amber"
             />
             <SummaryCard
               icon={<Calendar className="h-4 w-4" />}
               label="Debt-free"
               sub={
-                hasUnpayable
-                  ? 'Cannot calculate — set a minimum payment'
-                  : beyondHorizon
-                    ? 'Beyond 40 years at this rate'
-                    : projection.debtFreeMonth
-                      ? 'Projected payoff month'
-                      : 'Never under this plan'
+                !hasIncludedDebt
+                  ? 'Include an account to project a payoff'
+                  : hasUnpayable
+                    ? 'Never at these payments'
+                    : beyondHorizon
+                      ? 'Beyond 40 years at this rate'
+                      : 'Month of the final payment'
               }
               value={
                 hasUnpayable || beyondHorizon
@@ -608,24 +621,38 @@ export function Paydown() {
             {hasUnpayable && (
               <Alert>
                 <AlertTriangle />
-                <AlertTitle>Cannot calculate payoff</AlertTitle>
+                <AlertTitle>
+                  {unpayableAccounts.length === 1
+                    ? `${unpayableAccounts[0]!.name} never gets paid off`
+                    : `${unpayableAccounts.length} debts never get paid off`}
+                </AlertTitle>
                 <AlertDescription>
-                  {unpayableAccounts.length === 1 ? (
+                  {unpayableAccounts.length === 1 && hasNoPayment(unpayableAccounts[0]!) ? (
+                    <>It has no minimum or planned payment.</>
+                  ) : unpayableAccounts.length === 1 ? (
                     <>
-                      <span className="font-medium">{unpayableAccounts[0]!.name}</span> has no minimum or planned payment.
+                      Interest adds about {formatMoney(monthlyInterest(unpayableAccounts[0]!))} a month, and the payment doesn't
+                      cover it, so the balance keeps growing.
                     </>
                   ) : (
                     <>
-                      {unpayableAccounts.length} accounts have no minimum or planned payment: {unpayableAccounts.map((a) => a.name).join(', ')}.
+                      The payments on {unpayableAccounts.map((a) => a.name).join(', ')} don't cover their interest, so
+                      the balances keep growing.
                     </>
                   )}
-                  {' '}Set a minimum payment on each to project a payoff date.
+                  {' '}
+                  {unpayableAccounts.every(hasNoPayment)
+                    ? 'Set a minimum payment to see a payoff date.'
+                    : method === 'planned' || !isSimulated
+                    ? 'Raise the planned payment above the monthly interest to see a payoff date.'
+                    : 'Raise a planned payment or the monthly extra to see a payoff date.'}
                 </AlertDescription>
               </Alert>
             )}
             <PayoffProjectionChart
               accounts={chartSeries}
               projection={projection}
+              compare={isSimulated}
             />
             </CardContent>
           </Card>
@@ -657,17 +684,19 @@ export function Paydown() {
                             {a.name}
                           </div>
                           <div className="mt-0.5 text-xs text-muted-foreground">
-                            <span className="font-medium text-rose-600 dark:text-rose-400">−{formatMoney(a.balance)}</span> · {(a.interestRate * 100).toFixed(2)}% APR
+                            <span className="font-medium text-rose-400">−{formatMoney(a.balance)}</span> · {(a.interestRate * 100).toFixed(2)}% APR
                             {a.includeInPaydown && unpayableIds.has(a.id) && (
                               <>
                                 {' · '}
-                                <span className="font-medium text-amber-700 dark:text-amber-400">∞ no payment set</span>
+                                <span className="font-medium text-sky-300">
+                                  {hasNoPayment(a) ? 'no payment set' : 'never paid off'}
+                                </span>
                               </>
                             )}
-                            {r?.payoffMonth && a.includeInPaydown && !unpayableIds.has(a.id) && (
+                            {r?.payoffMonth && a.includeInPaydown && (
                               <> · payoff {monthYearShort(r.payoffMonth)}</>
                             )}
-                            {r && a.includeInPaydown && r.totalInterest > 0 && (
+                            {r?.payoffMonth && a.includeInPaydown && r.totalInterest > 0 && (
                               <> · {formatMoney(r.totalInterest)} interest</>
                             )}
                           </div>

@@ -147,7 +147,7 @@ export function MobileBottomNav() {
                   className={({ isActive }) => clsx(
                     'flex min-h-[4.75rem] flex-col items-center justify-center gap-1.5 rounded-2xl px-1 py-2 text-xs font-medium transition-[background-color,transform] active:scale-[0.94]',
                     isActive
-                      ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                      ? 'bg-amber-900/30 text-amber-300'
                       : 'bg-canvas-subtle fg-secondary',
                   )}
                 >
@@ -172,7 +172,7 @@ export function MobileBottomNav() {
                 onClick={() => setMenuOpen(false)}
                 className={({ isActive }) => clsx(
                   TAB_CLS,
-                  isActive && !menuOpen ? 'text-amber-700 dark:text-amber-300' : 'fg-tertiary',
+                  isActive && !menuOpen ? 'text-amber-300' : 'fg-tertiary',
                 )}
               >
                 {({ isActive }) => (
@@ -192,7 +192,7 @@ export function MobileBottomNav() {
               onClick={() => setMenuOpen((open) => !open)}
               className={clsx(
                 TAB_CLS,
-                menuOpen || menuRouteActive ? 'text-amber-700 dark:text-amber-300' : 'fg-tertiary',
+                menuOpen || menuRouteActive ? 'text-amber-300' : 'fg-tertiary',
               )}
             >
               <TabContent

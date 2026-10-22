@@ -3,8 +3,10 @@
  *   1. /health (public, no auth)
  *   2. /api/auth/* → Better Auth handler
  *   3. /api/setup/* → first-run wizard (public until complete)
- *   4. /api/{accounts,budget,categories,goals,transactions,simplefin}/* → resource routes
- *   5. Everything else → Vite-built static SPA (Caddy serves it in prod; in dev
+ *   4. /.well-known/oauth-*, /oauth/* → MCP device-code OAuth (public)
+ *   5. /mcp → remote MCP server (bearer access tokens, not sessions)
+ *   6. /api/{accounts,budget,categories,goals,transactions,simplefin}/* → resource routes
+ *   7. Everything else → Vite-built static SPA (Caddy serves it in prod; in dev
  *      Vite proxies to here and the SPA fallback is handled by Caddy too)
  *
  * On boot: run migrations, then ensureSetupState() (prints bootstrap token).
@@ -46,6 +48,9 @@ import { dashboardRoutes } from '@/routes/dashboard';
 import { dataRoutes } from '@/routes/data';
 import { onboardingRoutes } from '@/routes/onboarding';
 import { preferenceRoutes } from '@/routes/preferences';
+import { oauthRoutes } from '@/routes/oauth';
+import { mcpRoutes } from '@/routes/mcp';
+import { mcpGrantRoutes } from '@/routes/mcp-grants';
 import type { AppEnv } from '@/lib/tenant';
 
 export const app = new Hono<AppEnv>();
@@ -167,6 +172,13 @@ app.route('/api/setup', setupRoutes);
 //    router exposes /api/auth/me, /api/auth/logout helpers the UI uses.
 app.route('/api/auth-app', authRoutes);
 
+// ---- MCP server + its OAuth device flow (public, bearer-token auth) ------
+//    Mounted before the guard: MCP clients authenticate with access tokens
+//    from /oauth/token, which are deliberately not valid as browser sessions
+//    (and session cookies are not accepted at /mcp).
+app.route('/', oauthRoutes);
+app.route('/mcp', mcpRoutes);
+
 // ---- Guard everything below --------------------------------------------
 app.use('*', guard);
 
@@ -196,6 +208,7 @@ app.route('/api/dashboard', dashboardRoutes);
 app.route('/api/data', dataRoutes);
 app.route('/api/onboarding', onboardingRoutes);
 app.route('/api/preferences', preferenceRoutes);
+app.route('/api/mcp', mcpGrantRoutes);
 
 // ---- Static SPA ------------------------------------------------------------
 // The Vite-built SPA is baked into ./public at image-build time. Serve the

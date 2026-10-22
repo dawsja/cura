@@ -172,19 +172,24 @@ export function SavingsCalculatorPanel({
               {monthlyExtraNum > 0 ? ` with ${formatMoney(monthlyExtraNum)}/mo extra` : ''}
               {oneTimeExtraNum > 0 ? ` + ${formatMoney(oneTimeExtraNum)} one-time` : ''}
             </div>
-            {projection.baselineTotalInterest > 0 && (
-              <div>
-                Saves {formatMoney(Math.max(0, projection.baselineTotalInterest - projection.totalInterest))} in interest vs. baseline
-              </div>
+            {/* Interest only compares when both plans pay off; otherwise
+                one total is cut short and the difference means nothing. */}
+            {projection.baselineDebtFreeMonth && projection.debtFreeMonth && (() => {
+              const saved = Math.round((projection.baselineTotalInterest - projection.totalInterest) * 100) / 100;
+              if (saved > 0) return <div>Saves {formatMoney(saved)} in interest vs. your current plan</div>;
+              if (saved < 0) return <div>Costs {formatMoney(-saved)} more in interest than your current plan</div>;
+              return null;
+            })()}
+            {!projection.baselineDebtFreeMonth && projection.debtFreeMonth && (
+              <div>Pays off your debt, which your current plan never does</div>
             )}
             {projection.baselineDebtFreeMonth && projection.debtFreeMonth && projection.baselineDebtFreeMonth !== projection.debtFreeMonth && (
               <div>
                 Debt-free{' '}
                 {(() => {
-                  const baseMonths = ymToMonths(projection.baselineDebtFreeMonth);
-                  const newMonths = ymToMonths(projection.debtFreeMonth);
-                  const diff = baseMonths - newMonths;
-                  return diff > 0 ? `${diff} months earlier` : `${-diff} months later`;
+                  const diff = ymToMonths(projection.baselineDebtFreeMonth) - ymToMonths(projection.debtFreeMonth);
+                  const months = Math.abs(diff) === 1 ? '1 month' : `${Math.abs(diff)} months`;
+                  return diff > 0 ? `${months} earlier` : `${months} later`;
                 })()}
               </div>
             )}

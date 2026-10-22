@@ -35,10 +35,10 @@ export function DatePicker({
           disabled={disabled}
           aria-label={ariaLabel}
           data-empty={valid ? undefined : 'true'}
-          className={cn('w-full justify-between font-normal', !valid && 'text-muted-foreground', className)}
+          className={cn('w-full justify-between bg-inset font-normal', !valid && 'text-muted-foreground', className)}
         >
           <span className="truncate">{label}</span>
-          <ChevronDown data-icon="inline-end" />
+          <ChevronDown data-icon="inline-end" className="text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto" align="start">

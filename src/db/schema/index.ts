@@ -17,3 +17,4 @@ export * from './setup_state';
 export * from './goals';
 export * from './monthly_paydown';
 export * from './rules';
+export * from './mcp_auth';

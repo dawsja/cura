@@ -53,7 +53,9 @@ export function SignIn() {
     }
   }, [fromSignOut, qc]);
 
-  const callbackURL = params.get('callbackURL') ?? '/';
+  // Only same-origin paths: never follow `//host` or absolute URLs.
+  const requestedCallback = params.get('callbackURL');
+  const callbackURL = requestedCallback && /^\/(?![/\\])/.test(requestedCallback) ? requestedCallback : '/';
 
   // One fetch carries both the OIDC provider list AND the
   // `localAuthDisabled` flag so we can't render a half-applied view

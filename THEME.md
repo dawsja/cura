@@ -1,50 +1,47 @@
 # Cura Money Theme
 
-This file is the source of truth for Cura Money's light and dark palettes.
+This file is the source of truth for Cura Money's dark palette.
 Palette values live in `src/ui/src/styles.css`; component code should use
 semantic classes whenever possible.
 
 ## Theme Behavior
 
-The profile menu offers three preferences:
-
-- `system` follows `prefers-color-scheme` and updates when the OS changes.
-- `dark` always uses the dark palette.
-- `light` always uses the light palette.
-
-The preference is stored as `cura.theme`. `src/ui/index.html` applies it
-before the app loads to avoid a flash of the wrong theme. React owns later
-changes through `ThemeProvider`. The resolved dark theme is represented by a
-`.dark` class on `<html>`; `data-theme` retains the user's actual preference.
-
-Browser `theme-color` is updated to the resolved page canvas. The web manifest
-uses the default light canvas because manifest colors cannot react to runtime
-preferences.
+Cura Money is **dark only**. There is no light palette and no theme
+preference. `src/ui/index.html` sets `<html class="dark">` statically so
+third-party `dark:` styles resolve, `color-scheme` is `dark`, and the
+browser `theme-color` and web manifest use the page canvas (`#0a0d12`).
+App code never uses `dark:` variants or light/dark class pairs.
 
 ## Palette Ownership
 
 | File | Role |
 | --- | --- |
 | `src/ui/src/styles.css` | Color scales, semantic tokens, components, charts |
-| `src/ui/src/components/ThemeProvider.tsx` | Preference state and system-theme listener |
-| `src/ui/src/components/ProfileMenu.tsx` | System/dark/light selector |
-| `src/ui/index.html` | Pre-paint theme initialization and browser metadata |
+| `src/ui/index.html` | Static `dark` class and browser metadata |
 | `src/ui/public/manifest.webmanifest` | Static PWA startup colors |
 
 Do not edit generated root `public/` assets.
 
 ## Color Strategy
 
-Both modes use cool blue-gray neutrals, which support long sessions with dense
-financial data. Light mode raises cards to a restrained pale gray rather than
-white. Dark mode retains the established GitHub Dark-inspired canvas
-hierarchy. Cards become lighter than their surroundings in both modes.
+Cool blue-gray neutrals a step darker than GitHub Dark support long sessions
+with dense financial data. Cards are near-black and are separated from the
+page by hairline borders rather than by a lighter grey fill; menus, popovers,
+dialogs and sheets sit one tier brighter so they read as floating. Avoid
+grey filled panels and boxes nested inside boxes.
 
-Light mode is intentionally **dimmed light**, not a white theme. Large surfaces
-stay between `#cfd8df` and `#e9edf0`, substantially reducing emitted luminance
-and abrupt surface changes compared with Primer's white default canvas. The
-cool tint preserves the existing visual language without drifting into beige
-or sepia.
+Surface ladder, darkest to brightest:
+
+| Tier | Value | Token / class | Use |
+| --- | --- | --- | --- |
+| Inset | `#07090d` | `--bg-inset`, `bg-inset` | Text fields, selects, date pickers |
+| Page | `#0a0d12` | `--bg-page`, `bg-page`, `bg-background` | Main canvas |
+| Card | `#0f1419` | `--bg-surface`, `bg-surface`, `bg-card` | Cards, alerts, tables |
+| Elevated | `#151b23` | `--bg-elevated`, `bg-elevated`, `bg-popover` | Menus, popovers, dialogs, sheets, toasts |
+| Subtle | `#171e27` | `--bg-canvas-subtle`, `bg-muted` | Hover rows, table heads, segmented tracks |
+| Accent | `#1f2731` | `--accent`, `bg-accent` | Highlighted menu items, pressed toggles |
+
+Subtle sits above elevated so hover states stay visible inside overlays.
 
 The primary CTA remains fresh green (`#22c55e`). Its dark label (`#0d1117`)
 passes AA and keeps the button more legible than white text would. Success uses
@@ -53,20 +50,22 @@ reserved for depth and investment data.
 
 ## Semantic Tokens
 
-| Role | Light | Dark | Token |
-| --- | --- | --- | --- |
-| Main canvas | `#d9e0e5` | `#0d1117` | `--bg-page` |
-| Secondary canvas | `#cfd8df` | `#161b22` | `--bg-canvas-subtle` |
-| Elevated surface | `#e9edf0` | `#21262d` | `--bg-surface` |
-| Border | `#b8c3cb` | `#30363d` | `--border-default` |
-| Strong border | `#96a5b0` | `#484f58` | `--border-strong` |
-| Control boundary | `#657783` | `#68737f` | `--border-control` |
-| Focus indicator | `#116329` | `#4ade80` | `--focus-ring` |
-| Primary text | `#20262c` | `#c9d1d9` | `--fg-primary` |
-| Secondary text | `#43515c` | `#8b949e` | `--fg-secondary` |
-| Tertiary text | `#485661` | `#afb8c1` | `--fg-tertiary` |
-| Muted text | `#4f5d68` | `#8b949e` | `--fg-muted` |
-| Coffee accent | `#8b5e34` | `#c58b5a` | `--coffee-accent` |
+| Role | Value | Token |
+| --- | --- | --- |
+| Main canvas | `#0a0d12` | `--bg-page` |
+| Secondary canvas (subtle) | `#171e27` | `--bg-canvas-subtle` |
+| Card surface | `#0f1419` | `--bg-surface` |
+| Elevated surface | `#151b23` | `--bg-elevated` |
+| Inset (fields) | `#07090d` | `--bg-inset` |
+| Border | `#1f2630` | `--border-default` |
+| Strong border | `#2d3540` | `--border-strong` |
+| Control boundary | `#5f6975` | `--border-control` |
+| Focus indicator | `#4ade80` | `--focus-ring` |
+| Primary text | `#e6edf3` | `--fg-primary` |
+| Secondary text | `#9198a1` | `--fg-secondary` |
+| Tertiary text | `#b1bac4` | `--fg-tertiary` |
+| Muted text | `#9198a1` | `--fg-muted` |
+| Coffee accent | `#c58b5a` | `--coffee-accent` |
 
 Exposed semantic classes include `.fg-primary`, `.fg-secondary`,
 `.fg-tertiary`, `.fg-muted`, `.bg-page`, `.bg-canvas-subtle`, `.bg-surface`,
@@ -81,12 +80,14 @@ drive the shadcn variables so primitives stay on the same palette:
 | --- | --- |
 | `--background` | `--bg-page` |
 | `--foreground` | `--fg-primary` |
-| `--card` / `--popover` | `--bg-surface` |
+| `--card` | `--bg-surface` |
+| `--popover` | `--bg-elevated` |
 | `--primary` | `--mp-amber-500` (green CTA) |
 | `--primary-foreground` | `--mp-slate-900` |
 | `--muted` | `--bg-canvas-subtle` |
 | `--muted-foreground` | `--fg-muted` |
-| `--destructive` | `--mp-rose-600` (light) / `--mp-rose-500` (dark) |
+| `--accent` / `--accent-foreground` | `#1f2731` / `--fg-primary` |
+| `--destructive` | `--mp-rose-500` |
 | `--border` | `--border-default` |
 | `--input` | `--border-control` |
 | `--ring` | `--focus-ring` |
@@ -99,53 +100,52 @@ utility combinations. Bottom sheets use `Drawer`.
 
 ## Accent Roles
 
-| Role | Light foreground | Dark foreground | Core/action |
-| --- | --- | --- | --- |
-| Primary | `#116329` | `#4ade80` | `#22c55e` |
-| Success | `#116329` | `#56d364` | light/dark mode-specific green |
-| Danger | `#b4232b` | `#ff6e64` | red |
-| Warning | `#765000` | `#d29922` | ochre-yellow |
-| Depth | `#8250df` | `#d2a8ff` | purple |
+| Role | Foreground | Core/action |
+| --- | --- | --- |
+| Primary | `#4ade80` | `#22c55e` |
+| Success | `#56d364` | `#3fb950` |
+| Danger | `#ff6e64` | `#ff7b72` |
+| Warning | `#d29922` | ochre-yellow |
+| Depth | `#d2a8ff` | purple |
 
 Tailwind's historical `amber-*` scale is the primary green scale. Keep that
-mapping to avoid a broad component migration. In dark mode, the accent scales
-remain intentionally role-driven rather than monotonic: `200/300/400` are
-light readable foregrounds while `50/100/900` provide dark tinted surfaces.
-Light mode uses conventional pale-to-deep ramps.
+mapping to avoid a broad component migration. The accent scales are
+intentionally role-driven rather than monotonic: `200/300/400` are light
+readable foregrounds while `50/100/900` provide dark tinted surfaces.
 
 ## Chart Tokens
 
-| Token | Light | Dark |
-| --- | --- | --- |
-| `--chart-grid` | `#c7d0d7` | `#30363d` |
-| `--chart-axis` | `#4f5d68` | `#8b949e` |
-| `--chart-tooltip-bg` | `#e9edf0` | `#161b22` |
-| `--chart-tooltip-border` | `#b8c3cb` | `#30363d` |
-| `--chart-tooltip-fg` | `#20262c` | `#c9d1d9` |
-| `--chart-tooltip-muted` | `#4f5d68` | `#8b949e` |
-| `--chart-total` | `#25292e` | `#c9d1d9` |
-| `--chart-baseline` | `#116329` | `#22c55e` |
-| `--chart-orange` | `#bc4c00` | `#ffa657` |
-| `--chart-income` | `#116329` | `#56d364` |
-| `--chart-expense` | `#b4232b` | `#ff6e64` |
-| `--chart-net` | `#765000` | `#d29922` |
-| `--chart-comparison` | `#53606b` | `#8b949e` |
-| `--chart-merchant` | `#8250df` | `#d2a8ff` |
-| `--chart-net-worth-positive` | `#765000` | `#d29922` |
-| `--chart-net-worth-negative` | `#b4232b` | `#ff6e64` |
-| `--chart-category-1` | `#765000` | `#d29922` |
-| `--chart-category-2` | `#116329` | `#56d364` |
-| `--chart-category-3` | `#b4232b` | `#ff6e64` |
-| `--chart-category-4` | `#0550ae` | `#58a6ff` |
-| `--chart-category-5` | `#8250df` | `#d2a8ff` |
-| `--chart-category-6` | `#953800` | `#ffa657` |
-| `--chart-category-7` | `#0a6b6b` | `#39c5cf` |
-| `--chart-category-8` | `#53606b` | `#afb8c1` |
-| `--chart-excluded` | `#657783` | `#68737f` |
+| Token | Value |
+| --- | --- |
+| `--chart-grid` | `#1f2630` |
+| `--chart-axis` | `#9198a1` |
+| `--chart-tooltip-bg` | `#151b23` |
+| `--chart-tooltip-border` | `#2d3540` |
+| `--chart-tooltip-fg` | `#e6edf3` |
+| `--chart-tooltip-muted` | `#9198a1` |
+| `--chart-total` | `#e6edf3` |
+| `--chart-baseline` | `#22c55e` |
+| `--chart-orange` | `#ffa657` |
+| `--chart-income` | `#56d364` |
+| `--chart-expense` | `#ff6e64` |
+| `--chart-net` | `#d29922` |
+| `--chart-comparison` | `#8b949e` |
+| `--chart-merchant` | `#d2a8ff` |
+| `--chart-net-worth-positive` | `#d29922` |
+| `--chart-net-worth-negative` | `#ff6e64` |
+| `--chart-category-1` | `#d29922` |
+| `--chart-category-2` | `#56d364` |
+| `--chart-category-3` | `#ff6e64` |
+| `--chart-category-4` | `#58a6ff` |
+| `--chart-category-5` | `#d2a8ff` |
+| `--chart-category-6` | `#ffa657` |
+| `--chart-category-7` | `#39c5cf` |
+| `--chart-category-8` | `#afb8c1` |
+| `--chart-excluded` | `#68737f` |
 
 The eight category tokens form the shared category/account cycle. Every value
-is unique within its theme and is selected to retain at least 3:1 contrast
-against the elevated chart surface (`#e9edf0` light, `#21262d` dark). Series
+is unique and retains at least 3:1 contrast against every surface it is
+drawn on, up to the elevated tier (`#151b23`). Series
 still use labels, tooltips, and accessible data tables rather than color alone.
 
 That contrast holds for strokes, not for compounded fills. Where several series
@@ -162,8 +162,9 @@ keep their gradient fills, since nothing overlaps to compound.
 2. Update this file whenever palette values or theme behavior change.
 3. Amber/primary buttons use dark text, never white.
 4. Prefer semantic classes for surfaces, body text, and borders.
-5. Use explicit light and `dark:` pairs for accent treatments that are not
-   represented by semantic classes.
+5. Never add `dark:` variants or light/dark class pairs; there is one
+   palette. Accent treatments without a semantic class use the role scales
+   directly (for example `text-emerald-400`, `bg-rose-900/20`).
 6. Meaningful normal text, including tertiary and muted labels, must maintain
    at least 4.5:1 against its surface. Decorative content may use opacity only
    when it does not communicate information.
@@ -173,8 +174,8 @@ keep their gradient fills, since nothing overlaps to compound.
 8. The global focus default excludes `tabindex="-1"` containers and components
    with explicit `focus-visible:outline-none` or `focus-visible:ring-*` styles,
    preventing a second indicator from being layered over component-owned rings.
-9. If either page canvas changes, update the pre-paint script's `theme-color`
-   values and the applicable static manifest color.
+9. If the page canvas changes, update the `theme-color` meta in
+   `src/ui/index.html` and the static manifest colors.
 10. Composite inputs keep their control border neutral and place the focus
     outline on their shared wrapper so icons and text fields receive one
     continuous focus indicator.
@@ -187,6 +188,5 @@ bun run typecheck
 (cd src/ui && bun run build)
 ```
 
-Confirm that system mode reacts without reload, explicit modes ignore OS
-changes, reloads do not flash the opposite theme, and the profile menu remains
-usable by keyboard and on mobile.
+Check overlays (menus, popovers, dialogs, sheets) against cards and the page:
+hover and selected states must stay visible on the elevated tier.

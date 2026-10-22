@@ -115,6 +115,13 @@ const Env = z.object({
     .default('true')
     .transform((v) => v === 'true' || v === '1'),
 
+  // Remote MCP server (/mcp) plus its OAuth device-code endpoints. Disabled
+  // automatically in DEMO_MODE.
+  MCP_ENABLED: z
+    .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0'), z.literal('')])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1'),
+
   // Destructive retention is opt-in. Zero keeps financial history forever.
   RETENTION_DAYS: z.coerce.number().int().min(0).max(36_500).default(0),
 });

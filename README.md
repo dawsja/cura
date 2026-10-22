@@ -104,6 +104,62 @@ Authenticated users can download a versioned full-data JSON export from
 `GET /api/data/transactions.csv`. Exports include pending-review transactions
 but exclude passwords, sessions, provider tokens, and integration credentials.
 
+### MCP server
+
+Cura Money includes a remote [Model Context Protocol](https://modelcontextprotocol.io)
+server, so self-hosted assistants and automations can read a user's accounts,
+balances, transactions, budgets, goals, recurring charges, debt projections,
+and reports. All tools are read-only.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /mcp` | MCP Streamable HTTP endpoint (stateless, JSON responses) |
+| `GET /.well-known/oauth-protected-resource/mcp` | RFC 9728 resource metadata |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 server metadata |
+| `POST /oauth/device_authorization` | RFC 8628 device authorization |
+| `POST /oauth/token` | Device-code and refresh-token grants |
+| `POST /oauth/revoke` | RFC 7009 token revocation |
+
+Clients sign in with the OAuth 2.0 device authorization grant. They need no
+pre-registration; `client_id` is any label (1–100 printable characters) and is
+shown to the user when they approve the request.
+
+```bash
+# 1. The client requests a code.
+curl -s -X POST https://cura.example.com/oauth/device_authorization -d client_id="My agent"
+# → { "device_code": "…", "user_code": "BCDF-GHJK",
+#     "verification_uri": "https://cura.example.com/device", "interval": 5, … }
+
+# 2. The user opens verification_uri, signs in, checks the code, and approves.
+
+# 3. The client polls until approved (authorization_pending / slow_down until then).
+curl -s -X POST https://cura.example.com/oauth/token \
+  -d grant_type=urn:ietf:params:oauth:grant-type:device_code \
+  -d device_code="…" -d client_id="My agent"
+# → { "access_token": "cma_…", "refresh_token": "cmr_…", "expires_in": 3600, … }
+
+# 4. Call MCP with the access token.
+curl -s -X POST https://cura.example.com/mcp \
+  -H "Authorization: Bearer cma_…" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Access tokens expire after one hour. Clients renew them with
+`grant_type=refresh_token` and the same `client_id`. Each refresh returns a new
+refresh token and invalidates the old one. A refresh token expires after 90 days
+without use. If an already-used refresh token is presented again, Cura Money
+treats that as a leak and disconnects the app. Users can see and disconnect apps
+under **Settings → Connected apps**. MCP tokens are never valid for the regular
+`/api` routes, and browser sessions are not accepted at `/mcp`.
+
+Serve Cura Money over HTTPS behind your reverse proxy. The OAuth and MCP
+endpoints reject plain HTTP unless the request host is loopback, a private or
+CGNAT (Tailscale) address, a single-label name such as a Compose service, or a
+`.local`/`.lan`/`.internal`/`.home.arpa` name. Set `APP_URL` so the returned
+`verification_uri` points to the address users open in their browser. Set
+`MCP_ENABLED=false` to turn the feature off. It is always off in `DEMO_MODE`.
+
 ### Encryption key rotation
 
 Back up both PostgreSQL and the current secrets before changing keys. Database
@@ -172,6 +228,7 @@ successfully is not verified.
 - Debt paydown calculator: avalanche, snowball, planned
 - Optional SimpleFIN bank sync (cron-driven, every 2 hours)
 - OIDC sign-in with any OpenID Connect IdP
+- Read-only MCP server for AI assistants, with OAuth device-code sign-in
 
 ## License
 

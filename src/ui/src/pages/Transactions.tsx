@@ -14,12 +14,12 @@ import {
 import {
   Trash2, Search, Receipt, ArrowLeftRight, Filter, X, ArrowUpRight,
   BellRing, Plus, TrendingUp, TrendingDown, MoreVertical, Calendar, Pencil,
-  ChevronRight, AlertTriangle,
+  ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, ChevronDown, AlertTriangle,
 } from 'lucide-react';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Checkbox } from '../components/ui/checkbox';
 import {
   Dialog,
@@ -41,17 +41,16 @@ import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from '../com
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '../components/ui/field';
 import { Input } from '../components/ui/input';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../components/ui/input-group';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-  pageWindow,
-} from '../components/ui/pagination';
 import { DatePicker } from '../components/ui/date-picker';
+import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from '../components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '../components/ui/command';
 import {
   Select,
   SelectContent,
@@ -73,6 +72,7 @@ import {
 import { Textarea } from '../components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
 import { useReviews } from '../components/ReviewsProvider';
+import { CategoryPicker } from '../components/CategoryPicker';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { cn } from '../lib/utils';
 import clsx from 'clsx';
@@ -120,8 +120,32 @@ function dateRangeLabel(r: DateRangeState): string {
 type TxType = 'income' | 'expense' | 'transfer';
 const TX_TYPES: TxType[] = ['income', 'expense', 'transfer'];
 
-/** Rows per page. Tuned to fit a comfortable full table on a 13" laptop. */
-const PAGE_SIZE = 25;
+/** Rows-per-page choices; 25 fits a comfortable full table on a 13" laptop. */
+const PAGE_SIZES = [10, 25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 25;
+const PAGE_SIZE_KEY = 'cura.transactions.pageSize';
+
+function storedPageSize(): number {
+  try {
+    const value = Number(localStorage.getItem(PAGE_SIZE_KEY));
+    return (PAGE_SIZES as readonly number[]).includes(value) ? value : DEFAULT_PAGE_SIZE;
+  } catch {
+    return DEFAULT_PAGE_SIZE;
+  }
+}
+
+/** "Oct 21", with the year only when it isn't the current one. */
+function shortDate(iso: string): string {
+  const d = parseLocalDate(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
+}
+
+/** Imports land in Other › Uncategorized until someone files them. */
+function needsCategory(t: { subCategory?: string }): boolean {
+  return !t.subCategory || /\buncategorized\b/i.test(t.subCategory);
+}
 const DESKTOP_QUERY = '(min-width: 768px)';
 
 interface Transaction {
@@ -148,24 +172,23 @@ interface MainCategory { id: string; name: string; type: TxType; subCategories: 
 interface Account { id: string; name: string; alias?: string; type?: string; }
 
 const ANY = '__any__';
-const ROW_SELECT_TRIGGER = 'w-auto max-w-[9rem]';
 
 /** Visual styling for a transaction type across the page. */
 const TYPE_STYLE: Record<TxType, { label: string; sign: string; amount: string }> = {
   income: {
     label: 'Income',
     sign: '+',
-    amount: 'text-emerald-600 dark:text-emerald-400',
+    amount: 'text-emerald-400',
   },
   expense: {
     label: 'Expense',
     sign: '−',
-    amount: 'text-rose-600 dark:text-rose-400',
+    amount: 'text-rose-400',
   },
   transfer: {
     label: 'Transfer',
-    sign: '⇄',
-    amount: 'text-slate-600 dark:text-slate-400',
+    sign: '',
+    amount: 'fg-tertiary',
   },
 };
 
@@ -178,9 +201,9 @@ const TYPE_ICON: Record<TxType, typeof TrendingUp> = {
 
 /** Tinted circle behind the mobile row icon (explicit light + dark pairs). */
 const TYPE_ICON_WRAP: Record<TxType, string> = {
-  income: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  expense: 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-  transfer: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  income: 'bg-emerald-900/40 text-emerald-300',
+  expense: 'bg-rose-900/40 text-rose-300',
+  transfer: 'bg-slate-800 text-slate-300',
 };
 
 /**
@@ -349,13 +372,16 @@ function TypeSelect({
   );
 }
 
+/**
+ * Category field for forms that hold the pick as a JSON string. Renders
+ * the shared searchable CategoryPicker over the categories it is given.
+ */
 function CategorySelect({
   value,
   onValueChange,
   categories,
   placeholder,
   disabled,
-  size,
   className,
   allowAny,
   anyLabel = 'Any category',
@@ -367,7 +393,6 @@ function CategorySelect({
   categories: MainCategory[];
   placeholder: string;
   disabled?: boolean;
-  size?: 'sm' | 'default';
   className?: string;
   allowAny?: boolean;
   anyLabel?: string;
@@ -375,35 +400,17 @@ function CategorySelect({
   'aria-label'?: string;
 }) {
   return (
-    <Select
-      value={allowAny ? (value || ANY) : (value || undefined)}
-      onValueChange={(next) => onValueChange(allowAny && next === ANY ? '' : next)}
+    <CategoryPicker
+      categories={categories}
+      value={parseCategoryValue(value)}
+      onSelect={(pick) => onValueChange(pick ? JSON.stringify({ category: pick.category, subCategory: pick.subCategory }) : '')}
+      anyLabel={allowAny ? anyLabel : undefined}
+      placeholder={placeholder}
       disabled={disabled}
-    >
-      <SelectTrigger size={size} className={cn('w-full', className)} aria-label={ariaLabel} title={title}>
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent position="popper">
-        {allowAny && (
-          <SelectGroup>
-            <SelectItem value={ANY}>{anyLabel}</SelectItem>
-          </SelectGroup>
-        )}
-        {categories.map((c) => (
-          <SelectGroup key={c.id}>
-            <SelectLabel>{c.name}</SelectLabel>
-            {c.subCategories.map((s) => (
-              <SelectItem
-                key={s.id}
-                value={JSON.stringify({ category: c.name, subCategory: s.name })}
-              >
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
-      </SelectContent>
-    </Select>
+      className={className}
+      title={title}
+      aria-label={ariaLabel}
+    />
   );
 }
 
@@ -477,7 +484,6 @@ export function Transactions() {
     });
   };
   const [filterOpen, setFilterOpen] = useState(false);
-  const filterContainerRef = useRef<HTMLDivElement>(null);
   const setDateRange = (value: DateRangeState) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -490,59 +496,25 @@ export function Transactions() {
     });
   };
   const [dateOpen, setDateOpen] = useState(false);
-  const dateContainerRef = useRef<HTMLDivElement>(null);
-
-  // Click-outside closes the filter popover. mousedown fires before
-  // focus moves.
-  useEffect(() => {
-    if (!filterOpen) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (filterContainerRef.current && !filterContainerRef.current.contains(target)) {
-        setFilterOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [filterOpen]);
-
-  // Escape closes the popover — same affordance as the combobox.
-  useEffect(() => {
-    if (!filterOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setFilterOpen(false);
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [filterOpen]);
-
-  useEffect(() => {
-    if (!dateOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (dateContainerRef.current && !dateContainerRef.current.contains(e.target as Node)) {
-        setDateOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [dateOpen]);
-
-  useEffect(() => {
-    if (!dateOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDateOpen(false);
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [dateOpen]);
+  const [pageSize, setPageSizeState] = useState(storedPageSize);
+  const pageSizeLabelId = useId();
+  const setPageSize = (size: number) => {
+    setPageSizeState(size);
+    try {
+      localStorage.setItem(PAGE_SIZE_KEY, String(size));
+    } catch {
+      // Storage can be blocked; the choice still applies for this visit.
+    }
+    setPage(1);
+  };
 
   // Build the API query string from the filter state. Memoised so the
   // query key only changes when a filter actually changes (not when
   // unrelated state updates re-render the component).
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
-    params.set('limit', String(PAGE_SIZE));
-    params.set('offset', String((page - 1) * PAGE_SIZE));
+    params.set('limit', String(pageSize));
+    params.set('offset', String((page - 1) * pageSize));
     if (q.trim()) params.set('q', q.trim());
     if (filters.types.size > 0) params.set('types', Array.from(filters.types).join(','));
     if (filters.accounts.size > 0 && (ledgerAccounts.length === 0 || filters.accounts.size < ledgerAccounts.length)) {
@@ -579,14 +551,14 @@ export function Transactions() {
     if (to) params.set('to', to);
     if (reviewed) params.set('reviewed', 'true');
     return params.toString();
-  }, [page, q, filters, dateRange, ledgerAccounts.length, reviewed]);
+  }, [page, pageSize, q, filters, dateRange, ledgerAccounts.length, reviewed]);
 
   const txns = useQuery({
     queryKey: ['transactions', 'page', queryString],
     queryFn: () => api.get<PageResponse>(`/api/transactions/page?${queryString}`),
   });
   const total = txns.data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   // A delete or a shrinking result set can invalidate the current page.
   // Only clamp after a successful response so changing pages does not
@@ -899,7 +871,11 @@ export function Transactions() {
       <div className="flex items-baseline gap-2">
         <h1 className="text-2xl font-bold fg-primary">Transactions</h1>
         <span className="text-xs fg-muted tabular-nums">
-          {txns.isLoading ? '…' : `${total.toLocaleString()} match${total === 1 ? '' : 'es'}`}
+          {txns.isLoading
+            ? '…'
+            : filterActive
+              ? `${total.toLocaleString()} match${total === 1 ? '' : 'es'}`
+              : `${total.toLocaleString()} transaction${total === 1 ? '' : 's'}`}
         </span>
       </div>
 
@@ -907,7 +883,7 @@ export function Transactions() {
         <Alert data-onboarding-target="review-transactions">
           <BellRing />
           <AlertTitle>
-            You have {reviews.count} transaction{reviews.count === 1 ? '' : 's'} that need to be reviewed.
+            {reviews.count} imported transaction{reviews.count === 1 ? ' needs' : 's need'} a review before {reviews.count === 1 ? 'it counts' : 'they count'} in your budget.
           </AlertTitle>
           <AlertAction>
             <Button type="button" variant="link" onClick={reviews.openModal}>
@@ -930,65 +906,81 @@ export function Transactions() {
             <InputGroupInput
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search merchants, accounts…"
+              placeholder="Search merchants and accounts"
               aria-label="Search transactions"
             />
           </InputGroup>
 
-          <div ref={dateContainerRef} className="relative min-w-0 md:shrink-0">
-            <Button
-              type="button"
-              variant={dateRange.preset !== 'all' && (dateRange.from || dateRange.to) ? 'secondary' : 'outline'}
-              onClick={() => setDateOpen((o) => !o)}
-              aria-expanded={dateOpen}
-              aria-haspopup="dialog"
-              aria-label="Date range"
-              className="w-full md:w-auto md:max-w-[11rem]"
-            >
-              <Calendar data-icon="inline-start" />
-              <span className="truncate">{dateRangeLabel(dateRange)}</span>
-            </Button>
-            {dateOpen && (
-              <DateRangePopover
-                value={dateRange}
-                onChange={setDateRange}
-                onClose={() => setDateOpen(false)}
-              />
+          <ToolbarPanel
+            title="Date range"
+            open={dateOpen}
+            onOpenChange={setDateOpen}
+            isDesktop={isDesktop}
+            footer={datesActive && (
+              <Button type="button" variant="link" className="h-auto px-0" onClick={() => setDateRange(EMPTY_DATE_RANGE)}>
+                Clear dates
+              </Button>
             )}
-          </div>
-
-          <div ref={filterContainerRef} className="relative min-w-0 md:shrink-0">
-            <Button
-              type="button"
-              variant={popoverFilterCount > 0 ? 'secondary' : 'outline'}
-              onClick={() => setFilterOpen((o) => !o)}
-              aria-expanded={filterOpen}
-              aria-haspopup="dialog"
-              aria-label="Filters"
-              className="w-full md:w-auto"
-            >
-              <Filter data-icon="inline-start" />
-              Filters
-              {popoverFilterCount > 0 && (
-                <Badge className="h-[18px] min-w-[18px] px-1 text-[10px]">
-                  {popoverFilterCount}
-                </Badge>
-              )}
-            </Button>
-
-            {filterOpen && (
-              <FilterPopover
-                filters={filters}
-                setFilters={setFilters}
-                accounts={ledgerAccounts}
-                categories={cats.data ?? []}
-                merchants={merchants.data ?? []}
-                clearEnabled={filterActive}
-                onClear={clearFilters}
-                onClose={() => setFilterOpen(false)}
-              />
+            trigger={(
+              <Button
+                type="button"
+                variant={datesActive ? 'secondary' : 'outline'}
+                onClick={isDesktop ? undefined : () => setDateOpen(true)}
+                aria-haspopup="dialog"
+                aria-label={`Date range: ${dateRangeLabel(dateRange)}`}
+                className="w-full min-w-0 md:w-auto md:max-w-[11rem] md:shrink-0"
+              >
+                <Calendar data-icon="inline-start" />
+                <span className="truncate">{dateRangeLabel(dateRange)}</span>
+              </Button>
             )}
-          </div>
+          >
+            <DateRangePanel value={dateRange} onChange={setDateRange} />
+          </ToolbarPanel>
+
+          <ToolbarPanel
+            title="Filters"
+            open={filterOpen}
+            onOpenChange={setFilterOpen}
+            isDesktop={isDesktop}
+            className="w-[22rem]"
+            footer={(
+              <>
+                <Button type="button" variant="link" className="h-auto px-0" onClick={clearFilters} disabled={!filterActive}>
+                  Clear all
+                </Button>
+                <Button type="button" size="sm" onClick={() => setFilterOpen(false)}>
+                  Done
+                </Button>
+              </>
+            )}
+            trigger={(
+              <Button
+                type="button"
+                variant={popoverFilterCount > 0 ? 'secondary' : 'outline'}
+                onClick={isDesktop ? undefined : () => setFilterOpen(true)}
+                aria-haspopup="dialog"
+                aria-label="Filters"
+                className="w-full min-w-0 md:w-auto md:shrink-0"
+              >
+                <Filter data-icon="inline-start" />
+                Filters
+                {popoverFilterCount > 0 && (
+                  <Badge className="h-[18px] min-w-[18px] px-1 text-[10px]">
+                    {popoverFilterCount}
+                  </Badge>
+                )}
+              </Button>
+            )}
+          >
+            <FilterPanel
+              filters={filters}
+              setFilters={setFilters}
+              accounts={ledgerAccounts}
+              categories={cats.data ?? []}
+              merchants={merchants.data ?? []}
+            />
+          </ToolbarPanel>
 
           <Button
             type="button"
@@ -999,7 +991,7 @@ export function Transactions() {
             aria-label="Add transaction"
           >
             <Plus data-icon="inline-start" />
-            Add Transaction
+            Add transaction
           </Button>
         </div>
         {filterChips.length > 0 && (
@@ -1104,26 +1096,25 @@ export function Transactions() {
         <div className="hidden md:block">
           <Table>
             <TableHeader>
-              <TableRow className="text-left text-xs uppercase">
-                <TableHead>Merchant</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Account</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead />
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-24">Date</TableHead>
+                <TableHead>Merchant and account</TableHead>
+                <TableHead className="w-72">Category</TableHead>
+                <TableHead className="w-36 text-right">Amount</TableHead>
+                <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {txns.isLoading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground" role="status">
+                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground" role="status">
                     <span className="inline-flex items-center gap-2"><Spinner /> Loading transactions…</span>
                   </TableCell>
                 </TableRow>
               )}
               {txns.isError && (
                 <TableRow>
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={5}>
                     <Alert variant="destructive">
                       <AlertTriangle />
                       <AlertTitle>Transactions could not be loaded.</AlertTitle>
@@ -1135,77 +1126,68 @@ export function Transactions() {
                 </TableRow>
               )}
               {txns.isSuccess && txns.data.rows.map((t, idx) => {
-                const rowCats = (cats.data ?? []).filter((c) => c.type === t.type || c.name === 'Pay down goals');
-                const currentValue = (() => {
-                  const cat = rowCats.find((c) => c.name === t.category);
-                  if (!cat) return '';
-                  if (t.subCategory && cat.subCategories.some((s) => s.name === t.subCategory)) {
-                    return JSON.stringify({ category: cat.name, subCategory: t.subCategory });
-                  }
-                  return '';
-                })();
+                const rows = txns.data!.rows;
+                const firstOfDay = idx === 0 || rows[idx - 1]!.date !== t.date;
+                const lastOfDay = idx === rows.length - 1 || rows[idx + 1]!.date !== t.date;
                 const hasSplits = (t.splits?.length ?? 0) > 0;
-                const prevDate = idx > 0 ? txns.data!.rows[idx - 1]!.date : null;
-                const showDateHeader = t.date !== prevDate;
+                const assignmentBusy = updateAssignmentInline.isPending || createRuleFromTransaction.isPending || !!cats.error;
                 return (
-                  <Fragment key={t.id}>
-                  {showDateHeader && (
-                    <TableRow className="hover:bg-transparent">
-                      <TableCell colSpan={6} className="px-0 pb-2 pt-4">
-                        <div className="flex items-center gap-3">
-                          <span className="shrink-0 text-xs font-semibold fg-primary">
-                            {formatDateLong(t.date)}
+                  <TableRow key={t.id} className={cn('group/row', !lastOfDay && 'border-b-0')}>
+                    <TableCell className="align-top text-muted-foreground">
+                      {firstOfDay ? shortDate(t.date) : <span className="sr-only">{shortDate(t.date)}</span>}
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      <div className="fg-primary">{t.merchant}</div>
+                      <div className="text-xs text-muted-foreground">{t.account}</div>
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      {hasSplits ? (
+                        <div className="flex flex-col gap-0.5" title="Edit the transaction to change split allocations.">
+                          <span>Split in {t.splits!.length}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {t.splits!.map((split) => `${split.subCategory} ${formatMoney(split.amount)}`).join(', ')}
                           </span>
-                          <span className="flex-1 border-t border-default" aria-hidden="true" />
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  <TableRow className="cursor-pointer md:cursor-default" onClick={() => { if (!isDesktop) setDetailTx(t); }}>
-                    <TableCell className="fg-primary whitespace-normal">
-                      <div>{t.merchant}</div>
-                      {hasSplits && (
-                        <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] fg-muted">
-                          {t.splits!.map((split, splitIndex) => (
-                            <span key={split.id || splitIndex}>
-                              {split.category} › {split.subCategory} ·{' '}
-                              <span className={clsx('font-semibold tabular-nums', TYPE_STYLE[split.type].amount)}>
-                                {TYPE_STYLE[split.type].sign}{formatMoney(split.amount)}
-                              </span>
-                            </span>
-                          ))}
-                        </div>
+                      ) : (
+                        <CategoryPicker
+                          categories={cats.data ?? []}
+                          value={t.subCategory ? { category: t.category, subCategory: t.subCategory } : null}
+                          type={t.type}
+                          showTypeTabs
+                          disabled={assignmentBusy}
+                          onSelect={(pick) => {
+                            if (!pick) return;
+                            if (pick.type === t.type && pick.category === t.category && pick.subCategory === t.subCategory) return;
+                            updateAssignmentInline.mutate({ transaction: t, ...pick });
+                          }}
+                        >
+                          {needsCategory(t) ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full border-sky-300/60 text-sky-300 hover:bg-sky-900/40 hover:text-sky-300"
+                              aria-label={`Choose a category for ${t.merchant}`}
+                            >
+                              Needs a category
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="-ml-2.5 max-w-full justify-start font-normal"
+                              aria-label={`Change category for ${t.merchant}, now ${t.subCategory}`}
+                            >
+                              <span className="truncate">{t.subCategory}</span>
+                              {t.type === 'transfer' && <span className="text-muted-foreground">(transfer)</span>}
+                              <ChevronDown data-icon="inline-end" className="text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-visible/button:opacity-100" />
+                            </Button>
+                          )}
+                        </CategoryPicker>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <TypeSelect
-                        value={t.type}
-                        disabled={hasSplits || updateAssignmentInline.isPending || createRuleFromTransaction.isPending || !!cats.error}
-                        aria-label="Transaction type"
-                        title={hasSplits ? 'Edit the transaction to change split allocations.' : undefined}
-                        size="sm"
-                        className={clsx(ROW_SELECT_TRIGGER, 'font-medium')}
-                        onValueChange={(newType) => {
-                          if (newType === t.type) return;
-                          changeTransactionType(t, newType);
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <CategorySelect
-                        value={currentValue}
-                        onValueChange={(value) => onPickCategory(t, value)}
-                        categories={rowCats}
-                        placeholder="Select category"
-                        disabled={hasSplits || updateAssignmentInline.isPending || createRuleFromTransaction.isPending || !!cats.error}
-                        aria-label="Transaction category"
-                        title={hasSplits ? 'Edit the transaction to change split allocations.' : (t.subCategory ? `${t.category} › ${t.subCategory}` : t.category)}
-                        size="sm"
-                        className={ROW_SELECT_TRIGGER}
-                      />
-                    </TableCell>
-                    <TableCell className="fg-tertiary">{t.account}</TableCell>
-                    <TableCell className={clsx('text-right font-semibold tabular-nums', TYPE_STYLE[t.type].amount)}>
+                    <TableCell className={cn('text-right font-semibold tabular-nums', TYPE_STYLE[t.type].amount)}>
                       {TYPE_STYLE[t.type].sign}{formatMoney(t.amount)}
                     </TableCell>
                     <TableCell className="text-right">
@@ -1213,19 +1195,18 @@ export function Transactions() {
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        onClick={(e) => { e.stopPropagation(); setActionTx(t); }}
-                        aria-label="Transaction actions"
+                        onClick={() => setActionTx(t)}
+                        aria-label={`Actions for ${t.merchant}`}
                       >
                         <MoreVertical />
                       </Button>
                     </TableCell>
                   </TableRow>
-                  </Fragment>
                 );
               })}
               {txns.isSuccess && txns.data.rows.length === 0 && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={5}>
                     <EmptyTransactions
                       filtered={filterActive}
                       onClear={clearFilters}
@@ -1239,48 +1220,43 @@ export function Transactions() {
           </Table>
         </div>
 
-        {/*
-          Pagination — only render when there's more than one page. The
-          window helper collapses long ranges into "1 … 4 5 6 … 10"
-          so the bar stays short even with thousands of rows.
-        */}
-        {totalPages > 1 && (
-          <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div className="text-xs fg-muted tabular-nums">
-              Page {page} of {totalPages.toLocaleString()}
+        {txns.isSuccess && total > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3 text-sm text-muted-foreground">
+            <span className="tabular-nums">
+              {((page - 1) * pageSize + 1).toLocaleString()}–{Math.min(page * pageSize, total).toLocaleString()} of {total.toLocaleString()}
+            </span>
+            <div className="flex items-center gap-4">
+              <div className="hidden items-center gap-2 md:flex">
+                <span id={pageSizeLabelId}>Rows per page</span>
+                <Select value={String(pageSize)} onValueChange={(value) => setPageSize(Number(value))}>
+                  <SelectTrigger size="sm" className="w-[4.5rem]" aria-labelledby={pageSizeLabelId}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {PAGE_SIZES.map((size) => (
+                        <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              <span className="tabular-nums text-foreground">Page {page} of {totalPages.toLocaleString()}</span>
+              <div className="flex items-center gap-1">
+                <Button type="button" variant="outline" size="icon-sm" aria-label="First page" disabled={page === 1} onClick={() => setPage(1)}>
+                  <ChevronsLeft />
+                </Button>
+                <Button type="button" variant="outline" size="icon-sm" aria-label="Previous page" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                  <ChevronLeft />
+                </Button>
+                <Button type="button" variant="outline" size="icon-sm" aria-label="Next page" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                  <ChevronRight />
+                </Button>
+                <Button type="button" variant="outline" size="icon-sm" aria-label="Last page" disabled={page >= totalPages} onClick={() => setPage(totalPages)}>
+                  <ChevronsRight />
+                </Button>
+              </div>
             </div>
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                  />
-                </PaginationItem>
-                {pageWindow(page, totalPages).map((n, i) =>
-                  n === 'ellipsis' ? (
-                    <PaginationItem key={`e-${i}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={n}>
-                      <PaginationLink
-                        isActive={n === page}
-                        onClick={() => setPage(n)}
-                      >
-                        {n}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ),
-                )}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
           </div>
         )}
         </CardContent>
@@ -1369,6 +1345,8 @@ export function Transactions() {
         <AddTransactionModal
           categories={cats.data ?? []}
           accounts={ledgerAccounts}
+          merchants={merchants.data ?? []}
+          isDesktop={isDesktop}
           isPending={addTx.isPending}
           error={addTx.error?.message ?? null}
           onClose={() => setAddOpen(false)}
@@ -1586,14 +1564,65 @@ const DATE_PRESETS: { value: Exclude<DatePreset, 'custom'>; label: string }[] = 
   { value: 'ytd', label: 'YTD' },
 ];
 
-function DateRangePopover({
+/**
+ * Toolbar panel: a Popover anchored to its button on desktop and a bottom
+ * Drawer on phones, so filters stay reachable above the tab bar.
+ */
+function ToolbarPanel({
+  title,
+  open,
+  onOpenChange,
+  isDesktop,
+  trigger,
+  className,
+  children,
+  footer,
+}: {
+  title: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  isDesktop: boolean;
+  trigger: React.ReactElement;
+  className?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  if (isDesktop) {
+    return (
+      <Popover open={open} onOpenChange={onOpenChange}>
+        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+        <PopoverContent align="end" className={cn('w-80 gap-4 p-4', className)}>
+          <PopoverHeader>
+            <PopoverTitle>{title}</PopoverTitle>
+          </PopoverHeader>
+          {children}
+          {footer && <div className="flex items-center justify-between gap-2">{footer}</div>}
+        </PopoverContent>
+      </Popover>
+    );
+  }
+  return (
+    <>
+      {trigger}
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>{title}</DrawerTitle>
+          </DrawerHeader>
+          <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-2">{children}</div>
+          {footer && <DrawerFooter className="flex-row items-center justify-between">{footer}</DrawerFooter>}
+        </DrawerContent>
+      </Drawer>
+    </>
+  );
+}
+
+function DateRangePanel({
   value,
   onChange,
-  onClose,
 }: {
   value: DateRangeState;
   onChange: (next: DateRangeState) => void;
-  onClose: () => void;
 }) {
   const pickPreset = (preset: Exclude<DatePreset, 'custom'>) => {
     if (preset === 'all') {
@@ -1604,15 +1633,6 @@ function DateRangePopover({
     onChange({ preset, from, to });
   };
 
-  const setFrom = (from: string) => {
-    onChange({ preset: 'custom', from, to: value.to });
-  };
-  const setTo = (to: string) => {
-    onChange({ preset: 'custom', from: value.from, to });
-  };
-
-  const active = value.preset !== 'all' && (!!value.from || !!value.to);
-
   const presetValue =
     value.preset === 'custom'
       ? undefined
@@ -1620,22 +1640,6 @@ function DateRangePopover({
 
   return (
     <>
-    <div className="fixed inset-0 z-40 bg-black/40 md:hidden" aria-hidden="true" onClick={onClose} />
-    <Card
-      role="dialog"
-      aria-label="Date range"
-      className="mobile-popover absolute top-full left-0 z-50 mt-2 w-[20rem] max-w-[calc(100vw-1.5rem)] shadow-lg md:left-auto md:right-0"
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      <CardHeader>
-        <CardTitle>Date range</CardTitle>
-        <CardAction>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close date range">
-            <X />
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
       <ToggleGroup
         type="single"
         variant="outline"
@@ -1645,6 +1649,7 @@ function DateRangePopover({
           pickPreset(next as Exclude<DatePreset, 'custom'>);
         }}
         className="w-full flex-wrap"
+        aria-label="Date presets"
       >
         {DATE_PRESETS.map((opt) => (
           <ToggleGroupItem key={opt.value} value={opt.value}>
@@ -1656,263 +1661,194 @@ function DateRangePopover({
       <FieldGroup className="grid grid-cols-2 gap-2">
         <Field>
           <FieldLabel>From</FieldLabel>
-          <DatePicker value={value.from} onChange={setFrom} aria-label="From date" />
+          <DatePicker value={value.from} onChange={(from) => onChange({ preset: 'custom', from, to: value.to })} aria-label="From date" />
         </Field>
         <Field>
           <FieldLabel>To</FieldLabel>
-          <DatePicker value={value.to} onChange={setTo} aria-label="To date" />
+          <DatePicker value={value.to} onChange={(to) => onChange({ preset: 'custom', from: value.from, to })} aria-label="To date" />
         </Field>
       </FieldGroup>
-
-      {active && (
-        <Button type="button" variant="link" className="h-auto self-start px-0 text-xs" onClick={() => onChange(EMPTY_DATE_RANGE)}>
-          Clear dates
-        </Button>
-      )}
-      </CardContent>
-    </Card>
     </>
   );
 }
 
 /**
- * Filter popover anchored to the filter button. Owns no state of its
- * own — reads / writes the parent's `filters` state and applies every
- * change immediately (no "Apply" button).
- *
- * Sections:
- *   1. Type      — three toggle chips (income / expense / transfer)
- *   2. Account   — searchable combobox over the user's accounts
- *   3. Category  — searchable combobox over grouped sub-categories
- *   4. Merchant  — searchable combobox over the user's distinct
- *                  merchants (loaded from `/api/transactions/merchants`)
- *   5. Amount    — min + max number inputs
- *   Footer       — "Clear all" button (only enabled when something is
- *                  active) and a Close (X) button
+ * Filter controls. Owns no state of its own — reads / writes the parent's
+ * `filters` state and applies every change immediately (no "Apply" button).
  */
-function FilterPopover({
+function FilterPanel({
   filters,
   setFilters,
   accounts,
   categories,
   merchants,
-  clearEnabled,
-  onClear,
-  onClose,
 }: {
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   accounts: Account[];
   categories: MainCategory[];
   merchants: string[];
-  clearEnabled: boolean;
-  onClear: () => void;
-  onClose: () => void;
 }) {
   // Local string state for amount inputs — lets the user type partial
   // values like "1." without the parent re-running the query on every
-  // keystroke. The query effect below syncs into the parent state
-  // when the value is a valid number.
+  // keystroke. Valid numbers are mirrored into the parent state.
   const [minStr, setMinStr] = useState(filters.minAmount);
   const [maxStr, setMaxStr] = useState(filters.maxAmount);
+  const idPrefix = useId();
 
   // Keep local amount state in sync when the parent resets (e.g.
-  // "Clear all" pressed while the popover is still open).
+  // "Clear all" pressed while the panel is still open).
   useEffect(() => { setMinStr(filters.minAmount); }, [filters.minAmount]);
   useEffect(() => { setMaxStr(filters.maxAmount); }, [filters.maxAmount]);
 
-  // Mirror the local string back into the parent filter state, but
-  // only when it parses to a valid finite number. Empty strings clear
-  // the filter (so the query drops the `minAmount` / `maxAmount`
-  // param entirely).
-  const onMinChange = (v: string) => {
-    setMinStr(v);
-    if (v === '') {
-      setFilters((prev) => ({ ...prev, minAmount: '' }));
-    } else {
-      const n = Number(v);
-      if (Number.isFinite(n)) setFilters((prev) => ({ ...prev, minAmount: v }));
-    }
-  };
-  const onMaxChange = (v: string) => {
-    setMaxStr(v);
-    if (v === '') {
-      setFilters((prev) => ({ ...prev, maxAmount: '' }));
-    } else {
-      const n = Number(v);
-      if (Number.isFinite(n)) setFilters((prev) => ({ ...prev, maxAmount: v }));
-    }
+  const onAmountChange = (key: 'minAmount' | 'maxAmount', v: string) => {
+    (key === 'minAmount' ? setMinStr : setMaxStr)(v);
+    if (v === '' || Number.isFinite(Number(v))) setFilters((prev) => ({ ...prev, [key]: v }));
   };
 
-  const anythingActive =
-    filters.types.size > 0
-    || (filters.accounts.size > 0 && filters.accounts.size < accounts.length)
-    || filters.categoryPick !== ''
-    || filters.merchant !== ''
-    || filters.minAmount !== ''
-    || filters.maxAmount !== '';
+  let categoryValue: { category: string; subCategory: string } | null = null;
+  try {
+    if (filters.categoryPick) {
+      const parsed = JSON.parse(filters.categoryPick) as { category?: string; subCategory?: string };
+      if (parsed.category) categoryValue = { category: parsed.category, subCategory: parsed.subCategory ?? '' };
+    }
+  } catch { /* malformed selections show as "Any category" */ }
 
   return (
     <>
-    <div className="fixed inset-0 z-40 bg-black/40 md:hidden" aria-hidden="true" onClick={onClose} />
-    <Card
-      role="dialog"
-      aria-label="Filters"
-      className="mobile-popover absolute top-full right-0 z-50 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] shadow-lg"
-    >
-      <CardHeader>
-        <CardTitle>Filters</CardTitle>
-        <CardAction>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close filters">
-            <X />
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-      <FilterSection label="Type">
+      <FieldSet>
+        <FieldLegend variant="label">Type</FieldLegend>
         <ToggleGroup
           type="multiple"
           variant="outline"
           value={Array.from(filters.types)}
           onValueChange={(values) => setFilters((prev) => ({ ...prev, types: new Set(values as TxType[]) }))}
-          className="w-full flex-wrap"
+          className="w-full"
+          aria-label="Transaction types"
         >
           {TX_TYPES.map((t) => (
             <ToggleGroupItem key={t} value={t} className="flex-1">
-              <span className={clsx(
-                'inline-block h-1.5 w-1.5 rounded-full',
-                t === 'income' && 'bg-emerald-500',
-                t === 'expense' && 'bg-rose-500',
-                t === 'transfer' && 'bg-slate-400',
-              )} aria-hidden="true" />
               {TYPE_STYLE[t].label}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-      </FilterSection>
+      </FieldSet>
 
-      <FilterSection label="Account">
-        <div className="max-h-48 overflow-y-auto rounded-lg border border-default">
-          {accounts.map((a) => {
-            const label = a.alias || a.name;
-            const active = filters.accounts.has(a.id);
-            return (
-              <label
-                key={a.id}
-                className={clsx(
-                  'flex min-h-11 cursor-pointer items-center gap-2 px-2.5 py-2 text-xs transition-colors',
-                  active
-                    ? 'bg-amber-50 text-amber-800 font-medium dark:bg-amber-900/20 dark:text-amber-200'
-                    : 'fg-secondary hover:bg-slate-50 dark:hover:bg-slate-800/40',
-                )}
-              >
-                <Checkbox
-                  checked={active}
-                  onCheckedChange={() => {
-                    setFilters((prev) => {
-                      const next = new Set(prev.accounts);
-                      if (next.has(a.id)) next.delete(a.id);
-                      else next.add(a.id);
-                      return { ...prev, accounts: next };
-                    });
-                  }}
-                />
-                <span className="truncate">{label}</span>
-              </label>
-            );
-          })}
-          {accounts.length === 0 && (
-            <Empty className="p-3">
-              <EmptyHeader>
-                <EmptyTitle>No accounts.</EmptyTitle>
-              </EmptyHeader>
-            </Empty>
-          )}
-        </div>
-      </FilterSection>
+      <FieldSet>
+        <FieldLegend variant="label">Account</FieldLegend>
+        {accounts.length === 0 ? (
+          <FieldDescription>No accounts yet.</FieldDescription>
+        ) : (
+          <FieldGroup className="gap-2.5">
+            {accounts.map((a) => {
+              const id = `${idPrefix}-account-${a.id}`;
+              return (
+                <Field key={a.id} orientation="horizontal">
+                  <Checkbox
+                    id={id}
+                    checked={filters.accounts.has(a.id)}
+                    onCheckedChange={() => {
+                      setFilters((prev) => {
+                        const next = new Set(prev.accounts);
+                        if (next.has(a.id)) next.delete(a.id);
+                        else next.add(a.id);
+                        return { ...prev, accounts: next };
+                      });
+                    }}
+                  />
+                  <FieldLabel htmlFor={id} className="font-normal">{a.alias || a.name}</FieldLabel>
+                </Field>
+              );
+            })}
+          </FieldGroup>
+        )}
+      </FieldSet>
 
-      <FilterSection label="Category">
-        <CategorySelect
-          value={filters.categoryPick}
-          onValueChange={(value) => setFilters((prev) => ({ ...prev, categoryPick: value }))}
+      <Field>
+        <FieldLabel>Category</FieldLabel>
+        <CategoryPicker
           categories={categories}
-          placeholder="Any category"
-          allowAny
+          value={categoryValue}
+          anyLabel="Any category"
+          onSelect={(pick) => setFilters((prev) => ({
+            ...prev,
+            categoryPick: pick ? JSON.stringify({ category: pick.category, subCategory: pick.subCategory }) : '',
+          }))}
           aria-label="Category filter"
         />
-      </FilterSection>
+      </Field>
 
-      <FilterSection label="Merchant">
-        <Select
-          value={filters.merchant || ANY}
-          onValueChange={(value) => setFilters((prev) => ({ ...prev, merchant: value === ANY ? '' : value }))}
-        >
-          <SelectTrigger className="w-full" aria-label="Merchant filter">
-            <SelectValue placeholder="Any merchant" />
-          </SelectTrigger>
-          <SelectContent position="popper">
-            <SelectGroup>
-              <SelectItem value={ANY}>Any merchant</SelectItem>
-              {merchants.map((merchant) => (
-                <SelectItem key={merchant} value={merchant}>{merchant}</SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </FilterSection>
+      <Field>
+        <FieldLabel>Merchant</FieldLabel>
+        <MerchantPicker
+          merchants={merchants}
+          value={filters.merchant}
+          onChange={(merchant) => setFilters((prev) => ({ ...prev, merchant }))}
+        />
+      </Field>
 
-      <FilterSection label="Amount range">
+      <FieldSet>
+        <FieldLegend variant="label">Amount</FieldLegend>
         <FieldGroup className="grid grid-cols-2 gap-2">
           <Field>
-            <FieldLabel>Min</FieldLabel>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              value={minStr}
-              onChange={(e) => onMinChange(e.target.value)}
-              placeholder="0"
-            />
+            <FieldLabel htmlFor={`${idPrefix}-min`} className="font-normal text-muted-foreground">At least</FieldLabel>
+            <InputGroup>
+              <InputGroupAddon>$</InputGroupAddon>
+              <InputGroupInput id={`${idPrefix}-min`} type="number" step="0.01" min="0" inputMode="decimal" value={minStr} onChange={(e) => onAmountChange('minAmount', e.target.value)} placeholder="0" />
+            </InputGroup>
           </Field>
           <Field>
-            <FieldLabel>Max</FieldLabel>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              value={maxStr}
-              onChange={(e) => onMaxChange(e.target.value)}
-              placeholder="∞"
-            />
+            <FieldLabel htmlFor={`${idPrefix}-max`} className="font-normal text-muted-foreground">At most</FieldLabel>
+            <InputGroup>
+              <InputGroupAddon>$</InputGroupAddon>
+              <InputGroupInput id={`${idPrefix}-max`} type="number" step="0.01" min="0" inputMode="decimal" value={maxStr} onChange={(e) => onAmountChange('maxAmount', e.target.value)} placeholder="Any" />
+            </InputGroup>
           </Field>
         </FieldGroup>
-      </FilterSection>
-      </CardContent>
-      <CardFooter className="justify-between">
-        <Button
-          type="button"
-          variant="link"
-          className="h-auto px-0 text-xs"
-          onClick={onClear}
-          disabled={!anythingActive && !clearEnabled}
-        >
-          Clear all
-        </Button>
-        <Button type="button" size="sm" onClick={onClose}>
-          Done
-        </Button>
-      </CardFooter>
-    </Card>
+      </FieldSet>
     </>
   );
 }
 
-function FilterSection({ label, children }: { label: string; children: React.ReactNode }) {
+/** Searchable merchant filter (Popover + Command), with "Any merchant" first. */
+function MerchantPicker({ merchants, value, onChange }: { merchants: string[]; value: string; onChange: (merchant: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const pick = (merchant: string) => {
+    onChange(merchant);
+    setOpen(false);
+  };
   return (
-    <div>
-      <label className="block text-xs font-medium fg-tertiary mb-1.5">{label}</label>
-      {children}
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-label="Merchant filter"
+          className="w-full justify-between bg-inset font-normal"
+        >
+          <span className="truncate">{value || 'Any merchant'}</span>
+          <ChevronDown data-icon="inline-end" className="text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 gap-0 p-0">
+        <Command>
+          <CommandInput placeholder="Search merchants" />
+          <CommandList>
+            <CommandEmpty>No merchant matches.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem value="Any merchant" data-checked={!value} onSelect={() => pick('')}>Any merchant</CommandItem>
+              {merchants.map((merchant) => (
+                <CommandItem key={merchant} value={merchant} data-checked={merchant === value} onSelect={() => pick(merchant)}>
+                  {merchant}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -1935,6 +1871,8 @@ function FilterSection({ label, children }: { label: string; children: React.Rea
 function AddTransactionModal({
   categories,
   accounts,
+  merchants,
+  isDesktop,
   isPending,
   error,
   onClose,
@@ -1942,51 +1880,56 @@ function AddTransactionModal({
 }: {
   categories: MainCategory[];
   accounts: Account[];
+  merchants: string[];
+  isDesktop: boolean;
   isPending: boolean;
   error: string | null;
   onClose: () => void;
   onSubmit: (input: EditableTransaction) => Promise<void>;
 }) {
   const today = todayLocalISO();
+  const ids = useId();
   const [date, setDate] = useState(today);
   const [merchant, setMerchant] = useState('');
   const [type, setType] = useState<TxType>('expense');
-  // Category stored as a JSON-encoded value (matches the table's
-  // inline picker) so the same `JSON.parse` machinery works on the
-  // server and we don't have to fake a delimiter.
-  const [categoryPick, setCategoryPick] = useState('');
-  const [accountId, setAccountId] = useState('');
+  const [pick, setPick] = useState<{ category: string; subCategory: string } | null>(null);
+  const [suggested, setSuggested] = useState(false);
+  const [accountId, setAccountId] = useState(() => (accounts.length === 1 ? accounts[0]!.id : ''));
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
+  const [notesOpen, setNotesOpen] = useState(false);
 
-  // Categories filtered by the selected type. Same filter the inline
-  // table picker uses so the two UIs stay in lockstep.
-  const visibleCats = categories.filter((c) => c.type === type || c.name === 'Pay down goals');
-  const parsedCat = (() => {
-    if (!categoryPick) return null;
-    try { return JSON.parse(categoryPick) as { category: string; subCategory?: string }; }
-    catch { return null; }
-  })();
-  const selectedSub = parsedCat?.subCategory ?? '';
-
-  // When the user switches type, drop the category pick so the
-  // dropdown re-renders with the new bucket's options.
+  // A merchant the user has used before suggests the category (and type)
+  // of its most recent transaction, until the user picks one themselves.
+  const knownMerchant = merchants.find((m) => m.toLowerCase() === merchant.trim().toLowerCase());
+  const lastForMerchant = useQuery({
+    queryKey: ['transactions', 'page', 'last-for-merchant', knownMerchant],
+    queryFn: () => api.get<PageResponse>(`/api/transactions/page?limit=1&merchant=${encodeURIComponent(knownMerchant!)}`),
+    enabled: !!knownMerchant,
+    staleTime: 60_000,
+  });
   useEffect(() => {
-    setCategoryPick('');
-  }, [type]);
+    const last = lastForMerchant.data?.rows[0];
+    if (!last || !last.subCategory || needsCategory(last) || (pick && !suggested)) return;
+    setType(last.type);
+    setPick({ category: last.category, subCategory: last.subCategory });
+    setSuggested(true);
+    if (!accountId && last.accountId && accounts.some((a) => a.id === last.accountId)) setAccountId(last.accountId);
+  }, [lastForMerchant.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const amt = Number(amount);
+  const amountValid = amount !== '' && Number.isFinite(amt) && amt > 0;
+  const selectedAccount = accounts.find((account) => account.id === accountId);
+  const canSubmit = merchant.trim() !== '' && !!selectedAccount && !!pick && amountValid && !isPending;
 
   const onSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    const catName = parsedCat?.category ?? '';
-    const selectedAccount = accounts.find((account) => account.id === accountId);
-    if (!merchant.trim() || !selectedAccount || !catName || !selectedSub) return;
-    const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) return;
+    if (!canSubmit || !pick || !selectedAccount) return;
     await onSubmit({
       date,
       merchant: merchant.trim(),
-      category: catName,
-      subCategory: selectedSub,
+      category: pick.category,
+      subCategory: pick.subCategory,
       account: selectedAccount.name,
       accountId: selectedAccount.id,
       amount: amt,
@@ -1995,111 +1938,90 @@ function AddTransactionModal({
     });
   };
 
-  const canSubmit =
-    merchant.trim() !== ''
-    && accountId !== ''
-    && !!parsedCat?.category
-    && selectedSub !== ''
-    && Number.isFinite(Number(amount))
-    && Number(amount) > 0
-    && !isPending;
+  const submitLabel = isPending
+    ? 'Adding…'
+    : amountValid
+      ? `Add ${formatMoney(amt)} ${TYPE_STYLE[type].label.toLowerCase()}`
+      : 'Add transaction';
 
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => { if (!open && !isPending) onClose(); }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add transaction</DialogTitle>
-          <DialogDescription>Enter a date, amount, merchant, type, category, and account.</DialogDescription>
-        </DialogHeader>
+  const form = (
+    <form id={`${ids}-form`} onSubmit={onSubmitForm} className="flex flex-col gap-5">
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        spacing={0}
+        value={type}
+        onValueChange={(next) => {
+          if (!next || next === type) return;
+          setType(next as TxType);
+          // Categories belong to a type, so a type change clears the pick.
+          setPick(null);
+          setSuggested(false);
+        }}
+        disabled={isPending}
+        className="w-full"
+        aria-label="Type"
+      >
+        {TX_TYPES.map((t) => (
+          <ToggleGroupItem key={t} value={t} className="flex-1">
+            {TYPE_STYLE[t].label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
 
-        <form onSubmit={onSubmitForm} className="flex flex-col gap-4">
-          <FieldGroup className="gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Field>
-              <FieldLabel>Date</FieldLabel>
-              <DatePicker
-                value={date}
-                onChange={setDate}
-                disabled={isPending}
-                aria-label="Transaction date"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="add-tx-amount">Amount</FieldLabel>
-              <Input
-                id="add-tx-amount"
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                disabled={isPending}
-                placeholder="0.00"
-                required
-              />
-            </Field>
-          </div>
-
-          <Field>
-            <FieldLabel htmlFor="add-tx-merchant">Merchant</FieldLabel>
-            <Input
-              id="add-tx-merchant"
-              type="text"
-              value={merchant}
-              onChange={(e) => setMerchant(e.target.value)}
+      <FieldGroup className="gap-4">
+        <Field>
+          <FieldLabel htmlFor={`${ids}-amount`}>Amount</FieldLabel>
+          <InputGroup className="h-14">
+            <InputGroupAddon className="text-2xl text-muted-foreground">$</InputGroupAddon>
+            <InputGroupInput
+              id={`${ids}-amount`}
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
               disabled={isPending}
-              placeholder="e.g. Whole Foods Market"
-              maxLength={255}
+              placeholder="0.00"
+              className="text-3xl font-semibold tabular-nums md:text-3xl"
+              autoFocus={isDesktop}
               required
             />
-          </Field>
+          </InputGroup>
+        </Field>
 
-          <Field>
-            <FieldLabel>Type</FieldLabel>
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              value={type}
-              onValueChange={(next) => { if (next) setType(next as TxType); }}
-              disabled={isPending}
-              className="w-full"
-            >
-              {TX_TYPES.map((t) => (
-                <ToggleGroupItem key={t} value={t} className="flex-1">
-                  {t === 'income' && <TrendingUp data-icon="inline-start" />}
-                  {t === 'expense' && <TrendingDown data-icon="inline-start" />}
-                  {t === 'transfer' && <ArrowLeftRight data-icon="inline-start" />}
-                  {TYPE_STYLE[t].label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </Field>
+        <Field>
+          <FieldLabel htmlFor={`${ids}-merchant`}>Merchant</FieldLabel>
+          <Input
+            id={`${ids}-merchant`}
+            type="text"
+            list={`${ids}-merchants`}
+            value={merchant}
+            onChange={(e) => setMerchant(e.target.value)}
+            disabled={isPending}
+            placeholder="Where was it?"
+            maxLength={255}
+            autoComplete="off"
+            required
+          />
+          <datalist id={`${ids}-merchants`}>
+            {merchants.map((m) => <option key={m} value={m} />)}
+          </datalist>
+        </Field>
 
+        <div className="grid grid-cols-2 gap-3">
           <Field>
-            <FieldLabel>Category</FieldLabel>
-            <CategorySelect
-              value={categoryPick}
-              onValueChange={setCategoryPick}
-              categories={visibleCats}
-              disabled={isPending || visibleCats.length === 0}
-              placeholder={visibleCats.length === 0 ? 'No categories for this type' : 'Pick a category…'}
-            />
+            <FieldLabel>Date</FieldLabel>
+            <DatePicker value={date} onChange={setDate} disabled={isPending} aria-label="Transaction date" />
           </Field>
-
           <Field>
-            <FieldLabel>Account</FieldLabel>
-            <Select
-              value={accountId || undefined}
-              onValueChange={setAccountId}
-              disabled={isPending || accounts.length === 0}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={accounts.length === 0 ? 'No accounts available' : 'Pick an account…'} />
+            <FieldLabel htmlFor={`${ids}-account`}>Account</FieldLabel>
+            <Select value={accountId || undefined} onValueChange={setAccountId} disabled={isPending || accounts.length === 0}>
+              <SelectTrigger id={`${ids}-account`} className="w-full">
+                <SelectValue placeholder={accounts.length === 0 ? 'No accounts yet' : 'Choose'} />
               </SelectTrigger>
-              <SelectContent position="popper">
+              <SelectContent>
                 <SelectGroup>
                   {accounts.map((a) => (
                     <SelectItem key={a.id} value={a.id}>{a.alias || a.name}</SelectItem>
@@ -2108,37 +2030,90 @@ function AddTransactionModal({
               </SelectContent>
             </Select>
           </Field>
+        </div>
 
+        <Field>
+          <FieldLabel>Category</FieldLabel>
+          <CategoryPicker
+            categories={categories}
+            type={type}
+            value={pick}
+            onSelect={(next) => {
+              if (!next) return;
+              setPick({ category: next.category, subCategory: next.subCategory });
+              setSuggested(false);
+            }}
+            disabled={isPending}
+            aria-label="Category"
+          />
+          {suggested && knownMerchant && (
+            <FieldDescription>Suggested from your last {knownMerchant} transaction.</FieldDescription>
+          )}
+        </Field>
+
+        {notesOpen ? (
           <Field>
-            <FieldLabel htmlFor="add-tx-notes">Notes</FieldLabel>
+            <FieldLabel htmlFor={`${ids}-notes`}>Note</FieldLabel>
             <Textarea
-              id="add-tx-notes"
+              id={`${ids}-notes`}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               disabled={isPending}
-              rows={3}
+              rows={2}
               maxLength={2000}
-              placeholder="Optional notes"
+              autoFocus
             />
           </Field>
+        ) : (
+          <Button type="button" variant="link" className="h-auto self-start px-0" onClick={() => setNotesOpen(true)}>
+            Add a note
+          </Button>
+        )}
 
-          {error ? (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
-          </FieldGroup>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+      </FieldGroup>
+    </form>
+  );
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!canSubmit}>
-              {isPending ? <Spinner data-icon="inline-start" /> : <Plus data-icon="inline-start" />}
-              {isPending ? 'Adding…' : 'Add transaction'}
-            </Button>
-          </DialogFooter>
-        </form>
+  const actions = (
+    <>
+      <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+        Cancel
+      </Button>
+      <Button type="submit" form={`${ids}-form`} disabled={!canSubmit}>
+        {isPending && <Spinner data-icon="inline-start" />}
+        {submitLabel}
+      </Button>
+    </>
+  );
+
+  if (!isDesktop) {
+    return (
+      <Drawer open onOpenChange={(open) => { if (!open && !isPending) onClose(); }}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Add transaction</DrawerTitle>
+          </DrawerHeader>
+          <div className="overflow-y-auto px-4 pb-2">{form}</div>
+          <DrawerFooter className="flex-col-reverse">{actions}</DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !isPending) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add transaction</DialogTitle>
+          <DialogDescription className="sr-only">Enter the amount, merchant, date, account and category.</DialogDescription>
+        </DialogHeader>
+        {form}
+        <DialogFooter>{actions}</DialogFooter>
       </DialogContent>
     </Dialog>
   );

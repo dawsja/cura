@@ -3385,7 +3385,9 @@ export async function getPaydownModalData(userId: string, yearMonth: string): Pr
     // consume left-to-budget; account plannedPayment is preserved for
     // when a balance returns.
     const planned =
-      a.balance <= 0 ? 0 : (snapshotByAccount.get(a.id) ?? (a.plannedPayment > 0 ? a.plannedPayment : a.minPayment));
+      a.balance <= 0
+        ? 0
+        : (snapshotByAccount.get(a.id) ?? (a.plannedPayment > 0 ? Math.max(a.plannedPayment, a.minPayment) : a.minPayment));
     const actualCents = actualByName.get(a.name) ?? (a.alias ? actualByName.get(a.alias) : undefined) ?? 0;
     const actual = centsToDollars(actualCents);
     const remaining = centsToDollars(Math.round(planned * 100) - actualCents);
@@ -4550,7 +4552,7 @@ export interface NetWorthPoint {
  * `lib/accounting.ts → netWorthContribution` so the time-series
  * endpoint agrees with the Dashboard's headline number.
  */
-function netWorthContributionForAccount(type: string, balance: number): number {
+export function netWorthContributionForAccount(type: string, balance: number): number {
   if (type === 'uncategorized') return 0;
   if (type === 'credit' || type === 'loan') return -Math.abs(balance);
   return Math.abs(balance);

@@ -52,8 +52,8 @@ export interface PaydownAccountResult {
   name: string;
   startingBalance: number;
   apr: number;
-  payoffMonth: string | null; // YYYY-MM or null if excluded
-  monthsToPayoff: number | null; // 0 = already paid off
+  payoffMonth: string | null; // YYYY-MM of the final payment; null if excluded, already paid off, or never paid off
+  monthsToPayoff: number | null; // payments until paid off; null under the same conditions
   totalInterest: number;
   totalPaid: number;
 }
@@ -70,8 +70,12 @@ export interface PaydownProjection {
   startingTotal: number;
   totalInterest: number;
   totalPaid: number;
-  monthsToDebtFree: number | null; // null if any account never pays off
-  debtFreeMonth: string | null; // YYYY-MM
+  monthsToDebtFree: number | null; // null if nothing is projected or any account never pays off
+  debtFreeMonth: string | null; // YYYY-MM of the final payment
+  // Accounts whose balance stops falling: the payments reaching them do
+  // not cover their interest. Totals are then cut short and are not a
+  // lifetime cost, so the UI shows a warning instead of them.
+  nonAmortizingIds: string[];
   perAccount: PaydownAccountResult[];
   timeline: PaydownPoint[]; // monthly snapshots
   // Simulated vs. baseline. baseline is the planned-only projection so
@@ -80,10 +84,14 @@ export interface PaydownProjection {
   baselineTotalInterest: number;
   baselineMonthsToDebtFree: number | null;
   baselineDebtFreeMonth: string | null;
+  baselineNonAmortizingIds: string[];
 }
 
 const MAX_MONTHS = 12 * 40; // 40-year safety cap — auto-stops earlier when debts pay off
 const HUNDRED = 100;
+// A debt that is no lower than it was this many months ago never pays off.
+const STALL_WINDOW = 12;
+const PAID_OFF = 0.005;
 
 /**
  * Compute the priority order for avalanche/snowball. Single source of
@@ -91,7 +99,7 @@ const HUNDRED = 100;
  * allocation, so the budgeted amount lands on the same account the
  * projection targets.
  *
- * - Avalanche: highest APR first.
+ * - Avalanche: highest APR first; tie-break by smaller balance.
  * - Snowball:  smallest current balance first; tie-break by higher APR.
  * - Planned:   empty array — every account just pays its own amount.
  */
@@ -102,7 +110,12 @@ function priorityOrder(
 ): string[] {
   if (method === 'planned') return [];
   if (method === 'avalanche') {
-    return [...activeAccounts].sort((a, b) => b.apr - a.apr).map((a) => a.id);
+    return [...activeAccounts]
+      .sort((a, b) => {
+        if (a.apr !== b.apr) return b.apr - a.apr;
+        return (currentBalances[a.id] ?? a.balance) - (currentBalances[b.id] ?? b.balance);
+      })
+      .map((a) => a.id);
   }
   // snowball
   return [...activeAccounts]
@@ -295,7 +308,8 @@ export function firstMonthPaydownPayments(
  *                 from the active set but listed in the per-account result
  *                 for completeness (so the UI can still render them).
  * @param params   Method + extra payment overrides.
- * @param startAt  The month the simulation starts (default: today).
+ * @param startAt  The month the simulation starts (default: today). The
+ *                 first month's payments are assumed not to have posted yet.
  */
 export function projectPaydown(
   accounts: PaydownAccount[],
@@ -332,6 +346,15 @@ export function projectPaydown(
     let totalPaid = 0;
     let monthsToDebtFree: number | null = null;
     let debtFreeMonth: string | null = null;
+    let nonAmortizingIds: string[] = [];
+    // Without rollover, an account whose payment doesn't beat its first
+    // month's interest only grows. Project the others to their payoff,
+    // then stop.
+    const stuck = method === 'planned'
+      ? active.filter((a) => payments[a.id]!.effectivePayment <= a.balance * (a.apr / 12) + PAID_OFF).map((a) => a.id)
+      : [];
+    const othersPaidOff = () =>
+      active.every((a) => stuck.includes(a.id) || remaining[a.id]! <= PAID_OFF);
     const paidByAccount: Record<string, number> = {};
     const payoffByAccount: Record<string, { months: number; month: string } | undefined> = {};
     const monthlyBudget = active.reduce((sum, a) => sum + payments[a.id]!.effectivePayment, 0)
@@ -347,12 +370,21 @@ export function projectPaydown(
         totalDebt: totalDebtOf(snapshotBalances),
         byAccount: snapshotBalances,
       });
-      if (totalDebtOf(remaining) <= 0.005) {
-        // Already paid off — record the month if we haven't already and stop.
-        if (monthsToDebtFree === null) {
-          monthsToDebtFree = m;
-          debtFreeMonth = ymOf(snapMonth);
-        }
+      if (totalDebtOf(remaining) <= PAID_OFF) break;
+      if (stuck.length > 0 && othersPaidOff()) {
+        nonAmortizingIds = stuck;
+        break;
+      }
+      // Stop as soon as the debt stops shrinking instead of compounding
+      // a growing balance to the 40-year cap.
+      const yearAgo = timeline[m - STALL_WINDOW];
+      if (yearAgo && totalDebtOf(remaining) >= yearAgo.totalDebt - PAID_OFF) {
+        nonAmortizingIds = active
+          .filter((a) => {
+            const now = remaining[a.id]!;
+            return now > PAID_OFF && now >= (yearAgo.byAccount[a.id] ?? 0) - PAID_OFF;
+          })
+          .map((a) => a.id);
         break;
       }
       let order = orderFor(method, remaining);
@@ -378,14 +410,24 @@ export function projectPaydown(
 
       const paymentMonth = ymOf(snapMonth);
       for (const a of active) {
-        if (!payoffByAccount[a.id] && remaining[a.id]! <= 0.005) {
+        if (!payoffByAccount[a.id] && remaining[a.id]! <= PAID_OFF) {
           payoffByAccount[a.id] = { months: m + 1, month: paymentMonth };
         }
       }
-      if (monthsToDebtFree === null && totalDebtOf(remaining) <= 0.005) {
+      if (monthsToDebtFree === null && totalDebtOf(remaining) <= PAID_OFF) {
         monthsToDebtFree = m + 1;
         debtFreeMonth = paymentMonth;
       }
+    }
+    if (stuck.length > 0 && nonAmortizingIds.length === 0) nonAmortizingIds = stuck;
+    // A payoff on the very last allowed month still ends the curve at zero.
+    const last = timeline[timeline.length - 1];
+    if (monthsToDebtFree !== null && last && last.totalDebt > PAID_OFF) {
+      timeline.push({
+        month: ymOf(addMonths(start, timeline.length)),
+        totalDebt: totalDebtOf(remaining),
+        byAccount: { ...remaining },
+      });
     }
     // Per-account results.
     const perAccount: PaydownAccountResult[] = active.map((a) => {
@@ -421,6 +463,7 @@ export function projectPaydown(
       totalPaid,
       monthsToDebtFree,
       debtFreeMonth,
+      nonAmortizingIds,
     };
   }
 
@@ -441,14 +484,59 @@ export function projectPaydown(
     totalPaid: scenario.totalPaid,
     monthsToDebtFree: scenario.monthsToDebtFree,
     debtFreeMonth: scenario.debtFreeMonth,
+    nonAmortizingIds: scenario.nonAmortizingIds,
     perAccount: scenario.perAccount,
     timeline: scenario.timeline,
     baselineTimeline: baseline.timeline,
     baselineTotalInterest: baseline.totalInterest,
     baselineMonthsToDebtFree: baseline.monthsToDebtFree,
     baselineDebtFreeMonth: baseline.debtFreeMonth,
+    baselineNonAmortizingIds: baseline.nonAmortizingIds,
   };
 }
 
-// Re-export so the route can format things consistently.
+/** Map a liability account row (as returned by getLiabilityAccounts) to calculator input. */
+export function toPaydownAccount(row: {
+  id: string;
+  name: string;
+  type: string;
+  balance: number;
+  interestRate: number;
+  minPayment: number;
+  plannedPayment: number;
+  includeInPaydown: boolean;
+}): PaydownAccount {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type === 'loan' ? 'loan' : 'credit',
+    balance: row.balance,
+    apr: row.interestRate,
+    minPayment: row.minPayment,
+    plannedPayment: row.plannedPayment,
+    includeInPaydown: row.includeInPaydown,
+  };
+}
+
+/** Projection returned when the user has no liability accounts. */
+export function emptyProjection(method: PaydownMethod, params: PaydownParams): PaydownProjection {
+  return {
+    method,
+    params,
+    startingTotal: 0,
+    totalInterest: 0,
+    totalPaid: 0,
+    monthsToDebtFree: null,
+    debtFreeMonth: null,
+    nonAmortizingIds: [],
+    perAccount: [],
+    timeline: [],
+    baselineTimeline: [],
+    baselineTotalInterest: 0,
+    baselineMonthsToDebtFree: null,
+    baselineDebtFreeMonth: null,
+    baselineNonAmortizingIds: [],
+  };
+}
+
 export { ymOf, addMonths, MAX_MONTHS, HUNDRED };

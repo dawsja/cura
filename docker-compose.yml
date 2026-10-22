@@ -50,6 +50,7 @@ services:
 
       RUN_CRON: ${RUN_CRON:-true}
       RETENTION_DAYS: ${RETENTION_DAYS:-0}
+      MCP_ENABLED: ${MCP_ENABLED:-true}
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     healthcheck:

@@ -1,9 +1,22 @@
+import type { ReactNode } from 'react';
 import { ArrowUpRight } from 'lucide-react';
+import { Cell, Pie, PieChart } from 'recharts';
+import { cn } from 'cn';
 import { Progress } from './ui/progress';
-import { Card, CardContent, CardHeader } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
+import { Separator } from './ui/separator';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from './ui/chart';
 import { formatMoney } from '../lib/format';
-import clsx from 'clsx';
+import { subMoney, sumMoney } from './budget/BudgetTableParts';
+
+/** One slice of planned spending (an expense group, or the "Smaller groups" remainder). */
+export interface PlannedSpendingSlice {
+  name: string;
+  color: string;
+  planned: number;
+  actual: number;
+}
 
 export interface BudgetSummaryBoxProps {
   plannedIncome: number;
@@ -12,6 +25,7 @@ export interface BudgetSummaryBoxProps {
   spentExpense: number;
   plannedDebt: number;
   actualDebt: number;
+  slices: PlannedSpendingSlice[];
   loading?: boolean;
   onJumpToPaydown?: () => void;
 }
@@ -23,98 +37,93 @@ export function BudgetSummaryBox({
   spentExpense,
   plannedDebt,
   actualDebt,
+  slices,
   loading,
   onJumpToPaydown,
 }: BudgetSummaryBoxProps) {
-  const leftToBudget = Math.round(plannedIncome - plannedExpense - plannedDebt);
+  const assigned = sumMoney([plannedExpense, plannedDebt]);
+  const leftToBudget = Math.round(subMoney(plannedIncome, assigned));
   const overAssigned = leftToBudget < 0;
   const balanced = leftToBudget === 0;
-  const expenseRemaining = plannedExpense - spentExpense;
-  const debtRemaining = plannedDebt - actualDebt;
-  const debtPct = plannedDebt > 0 ? Math.min(100, (actualDebt / plannedDebt) * 100) : 0;
-  const debtBarTone = actualDebt > plannedDebt ? 'rose' : actualDebt >= plannedDebt * 0.7 ? 'amber' : 'emerald';
-  const debtRemainingClass = debtRemaining < 0
-    ? 'text-rose-600 dark:text-rose-400'
-    : debtRemaining > 0
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : 'text-muted-foreground';
-  const debtRemainingPrefix = debtRemaining < 0 ? '−' : '';
-
-  const headerBg = balanced
-    ? 'bg-sky-50 dark:bg-sky-900/20'
-    : overAssigned
-      ? 'bg-rose-50 dark:bg-rose-900/20'
-      : 'bg-emerald-50 dark:bg-emerald-900/20';
-  const headerText = balanced
-    ? 'text-sky-700 dark:text-sky-300'
-    : overAssigned
-      ? 'text-rose-700 dark:text-rose-300'
-      : 'text-emerald-700 dark:text-emerald-300';
+  const incomeToCome = subMoney(plannedIncome, earnedIncome);
 
   return (
-    <Card className="overflow-hidden py-0 gap-0">
-      <CardHeader className={clsx('px-5 py-6 text-center', headerBg)}>
-        <div className={clsx('text-3xl font-bold tabular-nums', headerText)}>
+    <Card className="gap-0 py-0">
+      <CardHeader className="flex flex-col gap-1 px-5 pt-5 pb-5 sm:px-6 sm:pt-6">
+        <CardTitle className="text-sm font-normal text-muted-foreground">Left to budget</CardTitle>
+        <div
+          className={cn(
+            'text-4xl leading-tight font-bold tracking-tight tabular-nums',
+            overAssigned ? 'text-rose-400' : balanced ? 'text-foreground' : 'text-emerald-400',
+          )}
+        >
           {overAssigned ? '−' : ''}{formatMoney(Math.abs(leftToBudget), true)}
         </div>
-        <div className="mt-1 text-xs text-muted-foreground">Left to budget</div>
+        <p className="text-sm text-muted-foreground">
+          {overAssigned
+            ? `${formatMoney(Math.abs(leftToBudget), true)} more assigned than planned income`
+            : balanced
+              ? 'Every dollar of planned income is assigned'
+              : `${formatMoney(assigned, true)} of ${formatMoney(plannedIncome, true)} income is assigned`}
+        </p>
       </CardHeader>
 
-      <CardContent className="flex flex-col gap-5 p-5">
+      <CardContent className="flex flex-col gap-5 px-5 pb-6 sm:px-6">
+        <Separator />
         <SummaryRow
           label="Income"
           planned={plannedIncome}
           actual={earnedIncome}
-          actualLabel="earned"
-          barTone="emerald"
+          verb="Earned"
+          tone="emerald"
+          trailing={incomeToCome > 0
+            ? <span className="tabular-nums">{formatMoney(incomeToCome, true)} to come</span>
+            : <span>{plannedIncome > 0 ? 'Fully earned' : 'Nothing planned'}</span>}
         />
         <SummaryRow
           label="Expenses"
           planned={plannedExpense}
           actual={spentExpense}
-          remaining={expenseRemaining}
-          actualLabel="spent"
-          barTone="rose"
+          verb="Spent"
+          tone="rose"
+          trailing={<LeftText value={subMoney(plannedExpense, spentExpense)} />}
         />
         <Button
           type="button"
           variant="ghost"
           onClick={onJumpToPaydown}
           disabled={!onJumpToPaydown}
-          className={clsx(
-            'group h-auto w-[calc(100%+1rem)] justify-start whitespace-normal rounded-lg p-2 -m-2',
-            onJumpToPaydown && 'cursor-pointer',
-          )}
+          className="group -m-2 h-auto w-[calc(100%+1rem)] justify-start rounded-lg p-2 font-normal whitespace-normal md:h-auto"
         >
-          <div className="w-full text-left">
-            <div className="mb-1.5 flex items-baseline justify-between">
-              <span className="flex items-center gap-1 text-sm font-medium text-foreground">
+          <SummaryRow
+            label={(
+              <span className="flex items-center gap-1">
                 Pay down
                 {onJumpToPaydown && (
-                  <ArrowUpRight data-icon="inline-end" className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  <ArrowUpRight data-icon="inline-end" className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
                 )}
               </span>
-              <span className="text-xs tabular-nums text-muted-foreground">{formatMoney(plannedDebt, true)} planned</span>
-            </div>
-            <Progress value={debtPct} tone={debtBarTone} />
-            <div className="mt-1.5 flex items-baseline justify-between text-xs">
-              <span className="text-muted-foreground">{formatMoney(actualDebt, true)} assigned</span>
-              {plannedDebt > 0 && (
-                <span className={clsx('tabular-nums', debtRemainingClass)}>
-                  {debtRemainingPrefix}{formatMoney(Math.abs(debtRemaining), true)} remaining
-                </span>
-              )}
-            </div>
-          </div>
+            )}
+            planned={plannedDebt}
+            actual={actualDebt}
+            verb="Assigned"
+            tone={actualDebt > plannedDebt ? 'rose' : actualDebt >= plannedDebt * 0.7 ? 'amber' : 'emerald'}
+            trailing={plannedDebt > 0 ? <LeftText value={subMoney(plannedDebt, actualDebt)} /> : null}
+          />
         </Button>
+        <Separator />
+        <PlannedSpending slices={slices} total={plannedExpense} />
+        {loading && <p className="text-center text-xs text-muted-foreground" role="status">Loading…</p>}
       </CardContent>
-
-      {loading && (
-        <div className="px-5 pb-3 text-center text-[10px] uppercase tracking-wider text-muted-foreground">
-          Loading…
-        </div>
-      )}
     </Card>
+  );
+}
+
+function LeftText({ value }: { value: number }) {
+  return (
+    <span className={cn('tabular-nums', value < 0 ? 'text-rose-400' : value > 0 ? 'text-emerald-400' : 'text-muted-foreground')}>
+      {value < 0 ? `${formatMoney(Math.abs(value), true)} over` : `${formatMoney(value, true)} left`}
+    </span>
   );
 }
 
@@ -122,40 +131,102 @@ function SummaryRow({
   label,
   planned,
   actual,
-  remaining,
-  actualLabel,
-  barTone,
+  verb,
+  tone,
+  trailing,
 }: {
-  label: string;
+  label: ReactNode;
   planned: number;
   actual: number;
-  remaining?: number;
-  actualLabel: string;
-  barTone: 'emerald' | 'rose';
+  verb: string;
+  tone: 'emerald' | 'rose' | 'amber';
+  trailing: ReactNode;
 }) {
   const pct = planned > 0 ? Math.min(100, (actual / planned) * 100) : 0;
-  const remainingClass = remaining != null && remaining < 0
-    ? 'text-rose-600 dark:text-rose-400'
-    : remaining != null && remaining > 0
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : 'text-muted-foreground';
-  const remainingPrefix = remaining != null && remaining < 0 ? '−' : '';
+  return (
+    <div className="flex w-full flex-col gap-2 text-left">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm font-semibold text-foreground">{label}</span>
+        <span className="text-sm text-muted-foreground tabular-nums">
+          <span className="font-semibold text-foreground">{formatMoney(actual, true)}</span> of {formatMoney(planned, true)}
+        </span>
+      </div>
+      <Progress value={pct} tone={tone} className="h-1.5" aria-label={`${verb} ${formatMoney(actual, true)} of ${formatMoney(planned, true)}`} />
+      <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+        <span>{verb}</span>
+        {trailing}
+      </div>
+    </div>
+  );
+}
+
+function PlannedSpending({ slices, total }: { slices: PlannedSpendingSlice[]; total: number }) {
+  const visible = slices.filter((s) => s.planned > 0);
+  const config: ChartConfig = {};
+  const data = visible.map((s, i) => {
+    const key = `g${i}`;
+    config[key] = { label: s.name, color: s.color };
+    return { key, name: s.name, planned: s.planned };
+  });
 
   return (
-    <div>
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="text-sm font-medium text-foreground">{label}</span>
-        <span className="text-xs tabular-nums text-muted-foreground">{formatMoney(planned, true)} planned</span>
-      </div>
-      <Progress value={pct} tone={barTone} />
-      <div className="mt-1.5 flex items-baseline justify-between text-xs">
-        <span className="text-muted-foreground">{formatMoney(actual, true)} {actualLabel}</span>
-        {remaining != null && (
-          <span className={clsx('tabular-nums', remainingClass)}>
-            {remainingPrefix}{formatMoney(Math.abs(remaining), true)} remaining
-          </span>
-        )}
-      </div>
+    <div className="flex flex-col gap-3">
+      <h3 className="text-sm font-semibold text-foreground">Planned spending</h3>
+      {visible.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nothing is budgeted for expenses this month.</p>
+      ) : (
+        <>
+          <div className="relative mx-auto size-36">
+            <ChartContainer config={config} framed={false} className="aspect-square size-36" aria-hidden={true}>
+              <PieChart>
+                <ChartTooltip
+                  content={<ChartTooltipContent config={config} hideLabel nameKey="key" valueFormatter={(v) => formatMoney(v)} />}
+                />
+                <Pie
+                  data={data}
+                  dataKey="planned"
+                  nameKey="key"
+                  innerRadius={50}
+                  outerRadius={66}
+                  paddingAngle={2}
+                  strokeWidth={0}
+                  isAnimationActive={false}
+                >
+                  {visible.map((s, i) => <Cell key={data[i]!.key} fill={s.color} />)}
+                </Pie>
+              </PieChart>
+            </ChartContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-lg font-bold text-foreground tabular-nums">{formatMoney(total, true)}</span>
+              <span className="text-xs text-muted-foreground">planned</span>
+            </div>
+          </div>
+          <table className="w-full text-sm">
+            <caption className="sr-only">Planned spending by category group</caption>
+            <thead>
+              <tr className="text-xs text-muted-foreground">
+                <th scope="col" className="pb-1 pl-[18px] text-left font-normal">Group</th>
+                <th scope="col" className="pb-1 text-right font-normal">Spent</th>
+                <th scope="col" className="w-16 pb-1 text-right font-normal">Budget</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((s) => (
+                <tr key={s.name}>
+                  <th scope="row" className="py-1 text-left font-normal">
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
+                      <span className="truncate fg-tertiary">{s.name}</span>
+                    </span>
+                  </th>
+                  <td className="py-1 pl-3 text-right whitespace-nowrap text-muted-foreground tabular-nums">{formatMoney(s.actual, true)}</td>
+                  <td className="py-1 pl-3 text-right whitespace-nowrap text-foreground tabular-nums">{formatMoney(s.planned, true)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </div>
   );
 }

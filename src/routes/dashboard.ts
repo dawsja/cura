@@ -23,10 +23,10 @@ const WidgetId = z.enum([
 ]);
 type WidgetIdValue = z.infer<typeof WidgetId>;
 const DEFAULT_ORDER: WidgetIdValue[] = [
+  'summary',
   'budget',
   'coming-up',
   'save-up',
-  'summary',
   'assets-liabilities',
   'recent-transactions',
   'accounts',

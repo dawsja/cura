@@ -212,7 +212,7 @@ export function SortableWidgetList<T extends string>({
           return (
             <div
               key="sortable-widget-placeholder"
-              className={clsx('rounded-xl border-2 border-dashed border-amber-400/70 bg-amber-50/40 dark:border-amber-500/50 dark:bg-amber-900/10', drag && itemClassName?.(drag.id))}
+              className={clsx('rounded-xl border-2 border-dashed border-primary/50 bg-primary/5', drag && itemClassName?.(drag.id))}
               style={{ height: drag?.height ?? 100 }}
             />
           );
@@ -224,7 +224,7 @@ export function SortableWidgetList<T extends string>({
               if (element) widgetRefs.current.set(item, element);
               else widgetRefs.current.delete(item);
             }}
-            className={clsx(itemClassName?.(item), editing && 'rounded-xl border border-dashed border-default bg-canvas-subtle p-2')}
+            className={clsx(itemClassName?.(item), editing && 'rounded-xl border border-dashed border-border p-2')}
           >
             {editing && (
               <div className="mb-2 flex items-center gap-1">
@@ -238,7 +238,7 @@ export function SortableWidgetList<T extends string>({
                     if (event.key === 'ArrowUp') { event.preventDefault(); moveWithKeyboard(item, -1); }
                     if (event.key === 'ArrowDown') { event.preventDefault(); moveWithKeyboard(item, 1); }
                   }}
-                  className="flex min-h-11 flex-1 touch-none select-none items-center gap-2 rounded-lg px-2 text-sm font-medium fg-secondary cursor-grab hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 active:cursor-grabbing"
+                  className="flex min-h-11 flex-1 touch-none select-none items-center gap-2 rounded-lg px-2 text-sm font-medium fg-secondary cursor-grab hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
                 >
                   <GripVertical className="h-4 w-4" />
                   {labels[item]}
@@ -263,8 +263,8 @@ export function SortableWidgetList<T extends string>({
         })}
       </div>
       {editing && hiddenWidgets.length > 0 && (
-        <div className="mt-6 rounded-xl border border-dashed border-default bg-canvas-subtle p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide fg-muted">Hidden widgets</div>
+        <div className="mt-6 rounded-xl border border-dashed border-border p-3">
+          <div className="mb-2 text-sm font-medium text-muted-foreground">Hidden widgets</div>
           <div className="flex flex-wrap gap-2">
             {hiddenWidgets.map((widget) => (
               <Button

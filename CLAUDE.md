@@ -37,9 +37,10 @@ Preserve server startup order: migrations → setup → auth → retention → o
 
 Transactions store amounts as integer cents; `transfer` is excluded from income/expense totals. Preserve categorization-rule precedence, hidden SimpleFIN accounts, and read-time account aliases during sync.
 
-Before visual changes, read `THEME.md`. The UI supports system, light, and dark themes (selected in
-the profile menu, resolved by `ThemeProvider`); palette tokens belong in `src/ui/src/styles.css`, and changes must update `THEME.md`. Use semantic classes such as `bg-page`, `bg-surface`, `fg-*`, and
-`border-default`, and provide explicit light and `dark:` pairs for accent treatments that lack a semantic token.
+Before visual changes, read `THEME.md`. The UI is dark only: there is no light theme and no `dark:`
+variant or light/dark class pair in app code. Palette tokens belong in `src/ui/src/styles.css`, and changes
+must update `THEME.md`. Use semantic classes such as `bg-page`, `bg-card`, `bg-popover`, `bg-inset`, `fg-*`,
+and `border-default`.
 
 ## Commit & Pull Request Guidelines
 

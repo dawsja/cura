@@ -6,16 +6,17 @@
  * axis stays scaled to the largest single balance and every debt keeps a
  * readable slope.
  *
- * Simulating: two series — this scenario (filled) against a dashed
- * current-plan baseline — so extra payments are visible as an earlier
- * intercept, not as overlapping account strokes.
+ * Simulating (`compare`): two series — this scenario (filled) against a
+ * dashed current-plan baseline — so extra payments are visible as an
+ * earlier intercept, not as overlapping account strokes.
  *
  * The projection timeline is a start-of-month snapshot: index 0 is
  * today's balance, and the entry after the final payment is exactly
  * zero. Each series is therefore drawn through its first zero snapshot
- * and cut off (null) beyond it — that lands the curve on the axis at
- * the payoff month instead of leaving it hanging above zero, and avoids
- * a flat trail along the axis for the rest of the horizon.
+ * and cut off (null) beyond it, so the curve meets the axis the month
+ * after the final payment and has no flat trail along the axis. The
+ * markers sit on the final-payment month, which is the month the page
+ * reports as debt-free.
  *
  * The chart uses the longer of the scenario and baseline horizons.
  * Axis ticks are generated rather than sampled: the first and last
@@ -72,15 +73,17 @@ const DESKTOP_QUERY = '(min-width: 768px)';
 export function PayoffProjectionChart({
   accounts,
   projection,
+  compare,
 }: {
   accounts: PayoffChartSeries[];
   projection: PayoffChartProjection;
+  /** Draw this scenario against the current plan instead of one curve per debt. */
+  compare: boolean;
 }) {
   const gradientPrefix = useId().replace(/:/g, '');
   const isDesktop = useIsDesktop();
   const [focusKey, setFocusKey] = useState<string | null>(null);
 
-  const compare = (projection.baselineTimeline?.length ?? 0) > 0;
   const seriesKey = accounts
     .map((account) => `${account.id}\u0000${account.name}\u0000${account.color}`)
     .join('\u0001');
@@ -436,7 +439,7 @@ function debtFreeMarkers(
 ): { month: string; label: string; color: string; position: 'insideTopLeft' | 'insideTopRight' | 'insideTop' }[] {
   if (!compare) {
     return projection.debtFreeMonth
-      ? [{ month: projection.debtFreeMonth, label: 'Debt-free', color: 'var(--chart-axis)', position: 'insideTop' }]
+      ? [{ month: projection.debtFreeMonth, label: 'Final payment', color: 'var(--chart-axis)', position: 'insideTop' }]
       : [];
   }
   const markers: { month: string; label: string; color: string }[] = [];

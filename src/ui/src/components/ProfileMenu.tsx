@@ -1,9 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { CircleHelp, Laptop, LogOut, Moon, Settings, Sun } from 'lucide-react';
+import { CircleHelp, LogOut, Settings } from 'lucide-react';
 import { fetchMe, signOut, SIGNOUT_FLAG_KEY } from '../lib/auth';
 import { useFinancialOnboarding } from './FinancialOnboardingProvider';
-import { useTheme, type ThemePreference } from './ThemeProvider';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,27 +11,14 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-
-const themeOptions: Array<{
-  value: ThemePreference;
-  label: string;
-  icon: typeof Laptop;
-}> = [
-  { value: 'system', label: 'System', icon: Laptop },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'light', label: 'Light', icon: Sun },
-];
 
 export function ProfileMenu() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const onboarding = useFinancialOnboarding();
-  const { preference, setPreference } = useTheme();
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe });
 
   const onSignOut = async () => {
@@ -62,24 +48,6 @@ export function ProfileMenu() {
               {email}
             </div>
           </DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Appearance</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={preference}
-            onValueChange={(value) => setPreference(value as ThemePreference)}
-          >
-            {themeOptions.map((option) => {
-              const Icon = option.icon;
-              return (
-                <DropdownMenuRadioItem key={option.value} value={option.value}>
-                  <Icon />
-                  {option.label}
-                </DropdownMenuRadioItem>
-              );
-            })}
-          </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
