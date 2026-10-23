@@ -230,11 +230,11 @@ export function SaveUp() {
             accounts={accList}
             onClose={() => setOpenGoalId(null)}
             onSaved={() => {
-              qc.invalidateQueries({ queryKey: ['goals'] });
+              void qc.invalidateQueries({ queryKey: ['goals'] });
               setOpenGoalId(null);
             }}
             onDeleted={() => {
-              qc.invalidateQueries({ queryKey: ['goals'] });
+              void qc.invalidateQueries({ queryKey: ['goals'] });
               setOpenGoalId(null);
             }}
           />
@@ -249,7 +249,7 @@ export function SaveUp() {
           accounts={accList}
           onClose={() => setCreatingNew(false)}
           onSaved={() => {
-            qc.invalidateQueries({ queryKey: ['goals'] });
+            void qc.invalidateQueries({ queryKey: ['goals'] });
             setCreatingNew(false);
           }}
           onDeleted={() => setCreatingNew(false)}

@@ -563,7 +563,7 @@ export function Budget() {
                   errorMessage={cellErrors.get(key)}
                   onboardingTarget={index === 0 ? (isIncome ? 'budget-plan-income' : 'budget-plan-expense') : undefined}
                   onChange={(v) => setLiveOverride(line.id, v)}
-                  onCommit={() => commitOverride(line.id, g.type)}
+                  onCommit={() => void commitOverride(line.id, g.type)}
                   onReset={() => clearLiveOverride(line.id)}
                 />
               )}
@@ -644,7 +644,7 @@ export function Budget() {
                 color={PAYDOWN_COLOR}
                 livePlanned={currentPaydownLive}
                 onLiveChange={setPaydownLiveOverride}
-                onLiveCommit={commitPaydownOverride}
+                onLiveCommit={(accountId) => void commitPaydownOverride(accountId)}
                 onLiveReset={resetPaydownOverride}
                 statuses={new Map(paydownRows.map((row) => [row.accountId, paydownStatuses.get(draftKey(ym, row.accountId))]))}
                 errorMessages={new Map(paydownRows.map((row) => [row.accountId, cellErrors.get(draftKey(ym, row.accountId))]))}
@@ -829,7 +829,7 @@ function BudgetTransactionsModal({
                   variant="ghost"
                   size="sm"
                   disabled={isPending}
-                  onClick={async () => {
+                  onClick={() => void (async () => {
                     undo.reset();
                     setUndoError(null);
                     setUndoPending(true);
@@ -843,7 +843,7 @@ function BudgetTransactionsModal({
                     } finally {
                       setUndoPending(false);
                     }
-                  }}
+                  })()}
                 >
                   {undoPending ? <Spinner data-icon="inline-start" /> : <Undo2 data-icon="inline-start" />}
                   {undoPending ? 'Undoing…' : 'Undo'}

@@ -114,7 +114,7 @@ export function Accounts() {
   const [confirmation, setConfirmation] = useState<{ action: 'hide' | 'delete'; account: Account } | null>(null);
 
   const invalidateFinancialData = () => {
-    FINANCIAL_QUERY_KEYS.forEach((key) => qc.invalidateQueries({ queryKey: [key] }));
+    FINANCIAL_QUERY_KEYS.forEach((key) => void qc.invalidateQueries({ queryKey: [key] }));
   };
 
   const add = useMutation({
@@ -171,7 +171,7 @@ export function Accounts() {
     mutationFn: () => api.delete('/api/simplefin/disconnect'),
     onSuccess: () => {
       setConfirmDisconnect(false);
-      qc.invalidateQueries({ queryKey: ['simplefin'] });
+      void qc.invalidateQueries({ queryKey: ['simplefin'] });
     },
   });
 
@@ -470,7 +470,7 @@ export function Accounts() {
                 <AlertTitle>Could not load accounts</AlertTitle>
                 <AlertDescription>{accounts.error.message}</AlertDescription>
               </Alert>
-              <Button type="button" onClick={() => accounts.refetch()} disabled={accounts.isFetching}>
+              <Button type="button" onClick={() => void accounts.refetch()} disabled={accounts.isFetching}>
                 {accounts.isFetching ? <Spinner data-icon="inline-start" /> : null}
                 {accounts.isFetching ? 'Retrying…' : 'Retry'}
               </Button>
@@ -582,7 +582,7 @@ export function Accounts() {
                 <AlertTitle>Could not load SimpleFIN status</AlertTitle>
                 <AlertDescription>{sf.error.message}</AlertDescription>
               </Alert>
-              <Button type="button" onClick={() => sf.refetch()} disabled={sf.isFetching} className="self-start">
+              <Button type="button" onClick={() => void sf.refetch()} disabled={sf.isFetching} className="self-start">
                 {sf.isFetching ? <Spinner data-icon="inline-start" /> : null}
                 {sf.isFetching ? 'Retrying…' : 'Retry'}
               </Button>
@@ -672,7 +672,7 @@ export function Accounts() {
               )}
             </div>
           ) : (
-            <form onSubmit={onClaim} className="flex flex-col gap-3">
+            <form onSubmit={(event) => void onClaim(event)} className="flex flex-col gap-3">
               <FieldGroup>
                 <Field data-invalid={!!sfErr || undefined}>
                   <FieldLabel htmlFor="simplefin-token">SimpleFIN setup token</FieldLabel>

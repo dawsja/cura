@@ -33,6 +33,11 @@ docker compose up -d
 docker compose ps
 ```
 
+Routine `docker compose up -d` only pulls the image when it is absent, so
+updates remain an explicit `docker compose pull`. For controlled upgrades,
+replace `latest` in `docker-compose.yml` with a `v*` release tag and change
+that tag deliberately.
+
 The app healthcheck stays unhealthy until startup migrations, setup loading,
 auth initialization, and a database readiness query succeed. Review startup
 logs after each update with `docker compose logs app`. Run one app container

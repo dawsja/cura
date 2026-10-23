@@ -7,6 +7,7 @@
  */
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from './api';
 import { getActiveCurrency, setActiveCurrency } from './format';
 
@@ -71,7 +72,13 @@ export function CurrencyProvider({
     // currency, then bump state to re-render every consumer.
     setActiveCurrency(code);
     setCurrencyState(code);
-    save.mutate(code);
+    save.mutate(code, {
+      onError: () => {
+        setActiveCurrency(currency);
+        setCurrencyState(currency);
+        toast.error('Could not save the display currency. Please try again.');
+      },
+    });
   };
 
   return (

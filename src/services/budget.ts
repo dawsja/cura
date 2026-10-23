@@ -161,28 +161,30 @@ export async function saveDebtPlanToBudget(
   input: { yearMonth: string; method: PaydownMethod; monthlyExtra: number; oneTimeExtra: number },
 ): Promise<SavedDebtPlan> {
   const { yearMonth, method } = input;
-  const liabilityAccounts = await getLiabilityAccounts(userId);
-  const included = liabilityAccounts.filter(
-    (account) => account.includeInPaydown && (account.type === 'credit' || account.type === 'loan'),
-  );
-  const accountById = new Map(included.map((a) => [a.id, a]));
+  return db.transaction(async () => {
+    const liabilityAccounts = await getLiabilityAccounts(userId);
+    const included = liabilityAccounts.filter(
+      (account) => account.includeInPaydown && (account.type === 'credit' || account.type === 'loan'),
+    );
+    const accountById = new Map(included.map((a) => [a.id, a]));
 
-  // Planned payments intentionally ignore calculator extras. Normalize
-  // them here so the saved scenario always matches the Budget result.
-  const monthlyExtra = method === 'planned' ? 0 : input.monthlyExtra;
-  const oneTimeExtra = method === 'planned' ? 0 : input.oneTimeExtra;
-  const result = await syncMonthlyPaydownWithScenario(userId, yearMonth, method, monthlyExtra, oneTimeExtra);
-  const plannedByName: Record<string, number> = {};
-  for (const row of result.allocation) {
-    const acct = accountById.get(row.accountId);
-    if (acct) plannedByName[acct.name] = row.planned;
-  }
-  await syncPaydownCategories(userId, Object.keys(plannedByName), { yearMonth, plannedByName });
-  await savePaydownScenario(userId, yearMonth, { method, monthlyExtra, oneTimeExtra });
-  return {
-    rowCount: result.rowCount,
-    syncedAt: result.syncedAt,
-    scenario: { method, monthlyExtra, oneTimeExtra },
-    snapshot: await getPaydownModalData(userId, yearMonth),
-  };
+    // Planned payments intentionally ignore calculator extras. Normalize
+    // them here so the saved scenario always matches the Budget result.
+    const monthlyExtra = method === 'planned' ? 0 : input.monthlyExtra;
+    const oneTimeExtra = method === 'planned' ? 0 : input.oneTimeExtra;
+    const result = await syncMonthlyPaydownWithScenario(userId, yearMonth, method, monthlyExtra, oneTimeExtra);
+    const plannedByName: Record<string, number> = {};
+    for (const row of result.allocation) {
+      const acct = accountById.get(row.accountId);
+      if (acct) plannedByName[acct.name] = row.planned;
+    }
+    await syncPaydownCategories(userId, Object.keys(plannedByName), { yearMonth, plannedByName });
+    await savePaydownScenario(userId, yearMonth, { method, monthlyExtra, oneTimeExtra });
+    return {
+      rowCount: result.rowCount,
+      syncedAt: result.syncedAt,
+      scenario: { method, monthlyExtra, oneTimeExtra },
+      snapshot: await getPaydownModalData(userId, yearMonth),
+    };
+  });
 }

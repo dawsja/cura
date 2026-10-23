@@ -178,7 +178,7 @@ export function Setup() {
 
       <AuthPanel>
         {step === 1 && (
-          <form onSubmit={onBootstrap} className="flex flex-col gap-4">
+          <form onSubmit={(event) => void onBootstrap(event)} className="flex flex-col gap-4">
             <h2 className="text-lg font-semibold text-foreground">1. Bootstrap the first admin</h2>
             <p className="text-sm text-muted-foreground">
               The bootstrap token is printed to the <code className="rounded bg-muted px-1">app</code> container logs
@@ -228,7 +228,7 @@ export function Setup() {
         )}
 
         {step === 2 && (
-          <form onSubmit={onConfigureOidc} className="flex flex-col gap-4">
+          <form onSubmit={(event) => void onConfigureOidc(event)} className="flex flex-col gap-4">
             <h2 className="text-lg font-semibold text-foreground">2. Configure an OIDC provider</h2>
             <p className="text-sm text-muted-foreground">
               Point Cura Money at your identity provider. We recommend Pocket ID for

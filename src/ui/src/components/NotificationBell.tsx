@@ -50,7 +50,7 @@ export function NotificationBell() {
   const clearMut = useMutation({
     mutationFn: () => api.post<{ ok: true }>('/api/notifications/clear', {}),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['notifications'] });
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 

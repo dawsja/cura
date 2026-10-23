@@ -54,24 +54,31 @@ dataRoutes.get(
   safe(async (c) => {
     const uid = userId(c);
     const [profile, accountRows, categoryRows, subCategoryRows, transactionRows, splitRows, budgetRows, goalRows,
-      paydownRows, paydownSnapshotRows, ruleRows, settingRows] = await Promise.all([
-      db.select({ id: user.id, name: user.name, email: user.email, createdAt: user.createdAt })
+      paydownRows, paydownSnapshotRows, ruleRows, settingRows] = await db.transaction(async (tx) => Promise.all([
+      tx.select({ id: user.id, name: user.name, email: user.email, createdAt: user.createdAt })
         .from(user).where(eq(user.id, uid)).limit(1),
-      db.select().from(accounts).where(eq(accounts.userId, uid)).orderBy(asc(accounts.createdAt)),
-      db.select().from(categories).where(eq(categories.userId, uid)).orderBy(asc(categories.sortOrder)),
-      db.select().from(subCategories).where(eq(subCategories.userId, uid)).orderBy(asc(subCategories.createdAt)),
-      db.select().from(transactions).where(eq(transactions.userId, uid)).orderBy(asc(transactions.date), asc(transactions.id)),
-      db.select().from(transactionSplits).where(eq(transactionSplits.userId, uid))
+      tx.select().from(accounts).where(eq(accounts.userId, uid)).orderBy(asc(accounts.createdAt)),
+      tx.select().from(categories).where(eq(categories.userId, uid)).orderBy(asc(categories.sortOrder)),
+      tx.select().from(subCategories).where(eq(subCategories.userId, uid)).orderBy(asc(subCategories.createdAt)),
+      tx.select().from(transactions).where(eq(transactions.userId, uid)).orderBy(asc(transactions.date), asc(transactions.id)),
+      tx.select().from(transactionSplits).where(eq(transactionSplits.userId, uid))
         .orderBy(asc(transactionSplits.transactionId), asc(transactionSplits.sortOrder)),
-      db.select(exportedBudgetColumns).from(monthlyBudgets).where(eq(monthlyBudgets.userId, uid))
+      tx.select(exportedBudgetColumns).from(monthlyBudgets).where(eq(monthlyBudgets.userId, uid))
         .orderBy(asc(monthlyBudgets.yearMonth)),
-      db.select().from(goals).where(eq(goals.userId, uid)).orderBy(asc(goals.createdAt)),
-      db.select().from(monthlyPaydown).where(eq(monthlyPaydown.userId, uid)).orderBy(asc(monthlyPaydown.yearMonth)),
-      db.select().from(monthlyPaydownSnapshots).where(eq(monthlyPaydownSnapshots.userId, uid))
+      tx.select().from(goals).where(eq(goals.userId, uid)).orderBy(asc(goals.createdAt)),
+      tx.select().from(monthlyPaydown).where(eq(monthlyPaydown.userId, uid)).orderBy(asc(monthlyPaydown.yearMonth)),
+      tx.select().from(monthlyPaydownSnapshots).where(eq(monthlyPaydownSnapshots.userId, uid))
         .orderBy(asc(monthlyPaydownSnapshots.yearMonth)),
-      db.select().from(rules).where(eq(rules.userId, uid)).orderBy(asc(rules.createdAt)),
-      db.select().from(settings).where(eq(settings.userId, uid)).orderBy(asc(settings.key)),
-    ]);
+      tx.select().from(rules).where(eq(rules.userId, uid)).orderBy(asc(rules.createdAt)),
+      tx.select().from(settings).where(eq(settings.userId, uid)).orderBy(asc(settings.key)),
+    ]));
+
+    const splitsByTransaction = new Map<string, typeof splitRows>();
+    for (const split of splitRows) {
+      const list = splitsByTransaction.get(split.transactionId) ?? [];
+      list.push(split);
+      splitsByTransaction.set(split.transactionId, list);
+    }
 
     attachment(c, 'cura-export.json', 'application/json; charset=utf-8');
     return c.body(JSON.stringify({
@@ -85,7 +92,7 @@ dataRoutes.get(
         subCategories: subCategoryRows,
         transactions: transactionRows.map((transaction) => ({
           ...transaction,
-          splits: splitRows.filter((split) => split.transactionId === transaction.id),
+          splits: splitsByTransaction.get(transaction.id) ?? [],
         })),
         monthlyBudgets: budgetRows,
         goals: goalRows,
@@ -102,16 +109,18 @@ dataRoutes.get(
   '/transactions.csv',
   safe(async (c) => {
     const uid = userId(c);
-    const rows = await db
-      .select()
-      .from(transactions)
-      .where(eq(transactions.userId, uid))
-      .orderBy(asc(transactions.date), asc(transactions.id));
-    const splitRows = await db
-      .select()
-      .from(transactionSplits)
-      .where(eq(transactionSplits.userId, uid))
-      .orderBy(asc(transactionSplits.transactionId), asc(transactionSplits.sortOrder));
+    const [rows, splitRows] = await db.transaction(async (tx) => Promise.all([
+      tx
+        .select()
+        .from(transactions)
+        .where(eq(transactions.userId, uid))
+        .orderBy(asc(transactions.date), asc(transactions.id)),
+      tx
+        .select()
+        .from(transactionSplits)
+        .where(eq(transactionSplits.userId, uid))
+        .orderBy(asc(transactionSplits.transactionId), asc(transactionSplits.sortOrder)),
+    ]));
     const splitsByTransaction = new Map<string, typeof splitRows>();
     for (const split of splitRows) {
       const list = splitsByTransaction.get(split.transactionId) ?? [];

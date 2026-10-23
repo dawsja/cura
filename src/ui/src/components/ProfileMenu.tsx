@@ -24,7 +24,7 @@ export function ProfileMenu() {
   const onSignOut = async () => {
     await signOut();
     sessionStorage.setItem(SIGNOUT_FLAG_KEY, '1');
-    qc.invalidateQueries({ queryKey: ['me'] });
+    void qc.invalidateQueries({ queryKey: ['me'] });
   };
 
   const name = me.data ? displayName(me.data.user) : '—';
@@ -51,7 +51,7 @@ export function ProfileMenu() {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => navigate('/settings')}>
+          <DropdownMenuItem onClick={() => void navigate('/settings')}>
             <Settings />
             Settings
           </DropdownMenuItem>

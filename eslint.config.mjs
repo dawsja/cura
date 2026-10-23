@@ -1,19 +1,19 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
-const tsFiles = ['src/**/*.ts', 'scripts/**/*.ts', 'drizzle.config.ts'];
+const tsFiles = ['src/**/*.ts', 'src/ui/src/**/*.tsx', 'scripts/**/*.ts', 'tests/**/*.ts', 'drizzle.config.ts'];
+const uiFiles = ['src/ui/src/**/*.{ts,tsx}'];
 
 export default [
   {
     ignores: [
       'node_modules/**',
-      'src/ui/**',
       'dist/**',
       'public/**',
       'drizzle/**',
       '**/*.d.ts',
-      'src/ui/src/**',
       'src/db/schema/auth.ts',
     ],
   },
@@ -41,6 +41,14 @@ export default [
       '@typescript-eslint/no-misused-promises': 'warn',
       'no-useless-escape': 'warn',
       'prefer-const': 'warn',
+    },
+  },
+  {
+    files: uiFiles,
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
     },
   },
   prettier,

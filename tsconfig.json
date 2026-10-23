@@ -25,6 +25,7 @@
   "include": [
     "src/**/*",
     "scripts/**/*",
+    "tests/**/*",
     "drizzle.config.ts"
   ],
   "exclude": [

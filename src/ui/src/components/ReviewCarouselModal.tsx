@@ -217,7 +217,7 @@ export function ReviewCarouselModal({
   );
 
   const slide = queue.find((row) => !skipped.has(row.id)) ?? null;
-  const edit = slide ? edits[slide.id] ?? defaultEdit(slide) : null;
+  const edit = useMemo(() => slide ? edits[slide.id] ?? defaultEdit(slide) : null, [edits, slide]);
   const editType = edit?.type ?? 'expense';
   const blocking = Boolean(ruleConfirmation || confirmAcceptAll || ruleOperation?.status === 'pending');
   const closeLocked = isMutating || ruleOperation?.status === 'pending';
@@ -251,15 +251,15 @@ export function ReviewCarouselModal({
     }
   }, [cats.data, edit, isValid, slide, updateEdit]);
 
-  const selection = edit && edit.category && edit.subCategory && isValid(edit)
+  const selection = useMemo(() => edit && edit.category && edit.subCategory && isValid(edit)
     ? { category: edit.category, subCategory: edit.subCategory }
-    : null;
+    : null, [edit, isValid]);
 
   const createScopedRule = useCallback(async (transactionId: string) => {
     setRuleOperation({ transactionId, status: 'pending' });
     try {
       const ruleResult = await createReviewedTransactionRule(transactionId);
-      queryClient.invalidateQueries({ queryKey: ['rules'] });
+      void queryClient.invalidateQueries({ queryKey: ['rules'] });
       setRuleOperation(null);
       if (ruleResult.status === 'confirmation_required') {
         setRuleConfirmation({ transactionId, rule: ruleResult.rule });
@@ -732,7 +732,7 @@ export function ReviewCarouselModal({
               setRuleConfirmation({ transactionId: ruleConfirmation.transactionId, rule: result.rule });
               throw new Error('The matching rule changed. Review the updated rule and confirm again.');
             }
-            queryClient.invalidateQueries({ queryKey: ['rules'] });
+            void queryClient.invalidateQueries({ queryKey: ['rules'] });
           }}
           onClose={() => setRuleConfirmation(null)}
         >

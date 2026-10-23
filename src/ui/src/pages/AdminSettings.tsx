@@ -303,7 +303,7 @@ function OidcSection() {
   const del = useMutation({
     mutationFn: (id: string) => api.delete<{ restart_required: boolean }>(`/api/admin/oidc/providers/${id}`),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['admin', 'oidc'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'oidc'] });
       if (data?.restart_required) setNeedsRestart(true);
     },
   });
@@ -445,7 +445,7 @@ function OidcSection() {
           onSaved={(needsRestart) => {
             setAdding(false);
             setEditing(null);
-            qc.invalidateQueries({ queryKey: ['admin', 'oidc'] });
+            void qc.invalidateQueries({ queryKey: ['admin', 'oidc'] });
             if (needsRestart) setNeedsRestart(true);
           }}
         />
@@ -483,7 +483,7 @@ function AuthenticationSection() {
       // The sign-in page reads auth-options — invalidate so a tab
       // already open at /sign-in re-renders against the new state on
       // next navigation.
-      qc.invalidateQueries({ queryKey: ['auth-options'] });
+      void qc.invalidateQueries({ queryKey: ['auth-options'] });
     },
     onError: (e) => {
       setErr((e as { message?: string }).message ?? 'Failed to update local auth.');
@@ -1211,7 +1211,7 @@ function PasswordSection({ hasCredential, email }: { hasCredential: boolean; ema
         <CardDescription>Change the password for your local account.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={onSubmit}>
+        <form onSubmit={(event) => void onSubmit(event)}>
           <FieldGroup>
             <Field data-invalid={invalid || undefined}>
               <FieldLabel htmlFor={currentId}>Current password</FieldLabel>
@@ -1355,7 +1355,7 @@ function UsersSection() {
     }),
     onSuccess: () => {
       closeCreateModal();
-      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
     onError: (error) => {
       setCreateErr((error as { message?: string }).message ?? 'Failed to create user.');
@@ -1365,14 +1365,13 @@ function UsersSection() {
   const del = useMutation({
     mutationFn: (id: string) => api.delete<{ ok: true; deletedRows: number }>(`/api/admin/users/${id}`),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
       setConfirmDelete(null);
       setDeleteErr(null);
       // Re-fetch `me` in case the current user changed (unlikely but harmless).
-      qc.invalidateQueries({ queryKey: ['me'] });
+      void qc.invalidateQueries({ queryKey: ['me'] });
       // Silent success — the row disappearing from the list is the
       // feedback. We log the row count for ops debugging.
-      // eslint-disable-next-line no-console
       console.info(`[admin] deleted user, ${data.deletedRows} rows of data removed`);
     },
     onError: (e) => {
@@ -1400,11 +1399,11 @@ function UsersSection() {
       api.patch<{ ok: true; id: string; role: string | null }>(`/api/admin/users/${id}`, { role }),
     onSuccess: (_data, vars) => {
       setRoleErr(null);
-      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
       // If the admin just changed their own role, refetch me so the page
       // guard reflects the new state. Server still enforces on every
       // request; this is just a UI cache concern.
-      if (me.data?.user.id === vars.id) qc.invalidateQueries({ queryKey: ['me'] });
+      if (me.data?.user.id === vars.id) void qc.invalidateQueries({ queryKey: ['me'] });
     },
     onError: (e, vars) => {
       const err = e as { message?: string };
@@ -1413,7 +1412,7 @@ function UsersSection() {
     onSettled: () => {
       // Always refetch so the select reflects the canonical value
       // (in case the server applied a normalized value, e.g. 'user' -> null).
-      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
   });
 
@@ -1959,7 +1958,7 @@ function ProviderForm({
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !locked) onClose(); }}>
       <DialogContent className="sm:max-w-lg">
-        <form onSubmit={onSubmit} className="contents">
+        <form onSubmit={(event) => void onSubmit(event)} className="contents">
           <DialogHeader>
             <DialogTitle>
               {isEdit ? `Edit ${initial?.providerId}` : 'Add OIDC provider'}

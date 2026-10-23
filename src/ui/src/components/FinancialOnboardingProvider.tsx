@@ -221,7 +221,7 @@ export function FinancialOnboardingProvider({ userId, children }: { userId: stri
 
   const routeForStep = useCallback((nextStep: StepId) => {
     const path = STEPS[nextStep].path;
-    if (path && location.pathname !== path) navigate(path);
+    if (path && location.pathname !== path) void navigate(path);
   }, [location.pathname, navigate]);
 
   const moveTo = useCallback((nextStep: StepId, skippedSteps?: StepId[]) => {
@@ -262,19 +262,20 @@ export function FinancialOnboardingProvider({ userId, children }: { userId: stri
     if (status === 'in_progress' && step === 'accounts' && location.pathname === '/accounts') advance();
   }, [advance, location.pathname, status, step]);
 
+  const refreshReviewCount = reviews.refreshCount;
   useEffect(() => {
     if (status !== 'in_progress' || step !== 'review') {
       setReviewReady(false);
       return;
     }
     let cancelled = false;
-    void reviews.refreshCount().then((ready) => {
+    void refreshReviewCount().then((ready) => {
       if (!cancelled) setReviewReady(ready);
     });
     return () => {
       cancelled = true;
     };
-  }, [reviews.refreshCount, status, step]);
+  }, [refreshReviewCount, status, step]);
 
   useEffect(() => {
     if (status === 'in_progress' && step === 'review' && reviewReady && !reviews.isLoading && reviews.count === 0) advance();
@@ -305,7 +306,7 @@ export function FinancialOnboardingProvider({ userId, children }: { userId: stri
 
   useEffect(() => {
     if (!activeDefinition?.path || location.pathname === activeDefinition.path) return;
-    navigate(activeDefinition.path);
+    void navigate(activeDefinition.path);
   }, [activeDefinition?.path, location.pathname, navigate]);
 
   useEffect(() => {
@@ -373,12 +374,12 @@ export function FinancialOnboardingProvider({ userId, children }: { userId: stri
     const current = stateQ.data;
     if (!current) return;
     persist({ ...current, status: 'completed', currentStep: 'complete' });
-    navigate('/');
+    void navigate('/');
   };
   const restart = useCallback(() => {
     setProductOverlayOpen(false);
     setRestartPromptOpen(true);
-    navigate('/');
+    void navigate('/');
   }, [navigate]);
 
   const primaryAction = () => {

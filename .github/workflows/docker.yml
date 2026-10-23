@@ -19,7 +19,34 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3
+      - name: Install server dependencies
+        run: bun install --frozen-lockfile
+      - name: Install UI dependencies
+        run: cd src/ui && bun install --frozen-lockfile
+      - name: Test
+        run: bun run test
+      - name: Lint
+        run: bun run lint
+      - name: Typecheck server
+        run: bun run typecheck
+      - name: Typecheck and build UI
+        run: cd src/ui && bun run build
+      - name: Audit server production dependencies
+        run: bun audit --production
+      - name: Audit UI production dependencies
+        run: cd src/ui && bun audit --production
+
   build:
+    needs: quality
     runs-on: ubuntu-latest
     permissions:
       contents: read

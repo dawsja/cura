@@ -3,7 +3,7 @@ name: curamoney
 services:
   app:
     image: ghcr.io/dawsja/cura:latest
-    pull_policy: always
+    pull_policy: if_not_present
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}

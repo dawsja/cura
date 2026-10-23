@@ -76,6 +76,13 @@ app.use('*', async (c, next) => {
     );
   }
 });
+for (const path of ['/api/*', '/mcp', '/mcp/*']) {
+  app.use(path, async (c, next) => {
+    await next();
+    if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'private, no-store');
+  });
+}
+
 app.use('*', bodyLimit({
   maxSize: MAX_REQUEST_BODY_BYTES,
   onError: (c) => c.json({ error: 'request body too large', code: 'payload_too_large' }, 413),
@@ -210,6 +217,8 @@ app.route('/api/data', dataRoutes);
 app.route('/api/onboarding', onboardingRoutes);
 app.route('/api/preferences', preferenceRoutes);
 app.route('/api/mcp', mcpTokenRoutes);
+
+app.all('/api/*', (c) => c.json({ error: 'not found', code: 'not_found' }, 404));
 
 // ---- Static SPA ------------------------------------------------------------
 // The Vite-built SPA is baked into ./public at image-build time. Serve the
