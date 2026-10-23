@@ -15,12 +15,13 @@ bun install --frozen-lockfile
 (cd src/ui && bun install --frozen-lockfile)
 bun run dev                         # API with watch mode
 bun run dev:web                     # Vite UI; proxies /api to :3000
-bun run lint                        # server and scripts
+bun run test                        # Bun tests with a disposable SQLite database
+bun run lint                        # server, scripts, tests, and UI
 bun run typecheck                   # root TypeScript
 (cd src/ui && bun run build)        # UI typecheck and production build
 ```
 
-Run lint, root typecheck, and UI build before submitting. There is no automated test framework; do not invent a test command. Smoke-test with `curl -s http://localhost:3000/health` and `/api/setup/status`. Source Compose development requires `docker compose -f docker-compose.yml -f docker-compose.dev.yml up`. Back up or restore the database with `scripts/backup.ts`.
+Run tests, lint, root typecheck, and UI build before submitting. Tests use Bun's built-in test runner and a migrated temporary database; never point them at a development or production database. Smoke-test with `curl -s http://localhost:3000/health` and `/api/setup/status`. Source Compose development requires `docker compose -f docker-compose.yml -f docker-compose.dev.yml up`. Back up or restore the database with `scripts/backup.ts`.
 
 ## Coding Style & Naming Conventions
 

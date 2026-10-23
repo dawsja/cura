@@ -245,7 +245,7 @@ export function Reports() {
     ?? (spendingTrends.data?.series[0]?.month ? String(spendingTrends.data.series[0].month) : undefined)
     ?? netWorth.data?.[0]?.month;
   const rangeBounds = reportRangeBounds(range, firstRangeMonth, retention.data?.cutoffDate);
-  const drilldown = (filters: Parameters<typeof transactionUrl>[0]) => navigate(transactionUrl(filters));
+  const drilldown = (filters: Parameters<typeof transactionUrl>[0]) => void navigate(transactionUrl(filters));
   const renderWidget = (widget: ReportWidgetId) => {
     if (widget === 'summary') {
       if (cashFlow.isPending || netWorth.isPending) return <SummarySkeleton />;

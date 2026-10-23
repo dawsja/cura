@@ -197,7 +197,7 @@ export function RuleFormModal({
             Choose which transactions this rule matches and how to file them.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-6">
+        <form onSubmit={(event) => void onSubmit(event)} className="flex flex-col gap-6">
           <FieldGroup className="gap-6">
             <FieldSet>
               <FieldLegend>Match</FieldLegend>

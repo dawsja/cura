@@ -209,7 +209,7 @@ export function Rules() {
     }) => api.post<Rule>('/api/rules', input),
     onSuccess: (created) => {
       qc.setQueryData<Rule[]>(['rules'], (current) => current ? [...current, created] : [created]);
-      qc.invalidateQueries({ queryKey: ['rules'] });
+      void qc.invalidateQueries({ queryKey: ['rules'] });
       setModal(null);
     },
   });
@@ -233,14 +233,14 @@ export function Rules() {
       qc.setQueryData<Rule[]>(['rules'], (current) =>
         current?.map((rule) => rule.id === updated.id ? updated : rule) ?? [updated],
       );
-      qc.invalidateQueries({ queryKey: ['rules'] });
+      void qc.invalidateQueries({ queryKey: ['rules'] });
       setModal(null);
     },
   });
 
   const deleteRule = useMutation({
     mutationFn: (id: string) => api.delete(`/api/rules/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['rules'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['rules'] }),
   });
 
   const runRule = useMutation({
@@ -778,6 +778,6 @@ function RuleSentence({ rule, accountName }: { rule: Rule; accountName?: string 
 
 function invalidateRuleRunDependents(qc: QueryClient) {
   for (const queryKey of ['transactions', 'dashboard', 'budget', 'reports', 'reviews']) {
-    qc.invalidateQueries({ queryKey: [queryKey] });
+    void qc.invalidateQueries({ queryKey: [queryKey] });
   }
 }

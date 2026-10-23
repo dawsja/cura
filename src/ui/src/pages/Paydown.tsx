@@ -291,7 +291,7 @@ export function Paydown() {
   const patchAccount = useMutation({
     mutationFn: (input: { id: string; patch: Partial<PaydownAccount> }) =>
       api.patch(`/api/paydown/account/${input.id}`, input.patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['paydown'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['paydown'] }),
   });
 
   const currentYm = currentYearMonth();
@@ -348,10 +348,10 @@ export function Paydown() {
       });
       qc.setQueryData(['paydown', 'scenario', currentYm], { scenario: result.scenario });
       qc.setQueryData(['paydown', 'snapshot', currentYm], result.snapshot);
-      qc.invalidateQueries({ queryKey: ['paydown'] });
-      qc.invalidateQueries({ queryKey: ['accounts'] });
-      qc.invalidateQueries({ queryKey: ['budget'] });
-      qc.invalidateQueries({ queryKey: ['categories'] });
+      void qc.invalidateQueries({ queryKey: ['paydown'] });
+      void qc.invalidateQueries({ queryKey: ['accounts'] });
+      void qc.invalidateQueries({ queryKey: ['budget'] });
+      void qc.invalidateQueries({ queryKey: ['categories'] });
       const message = result.rowCount === 0
         ? 'No accounts included — toggle Include on at least one card to snapshot.'
         : `Saved ${result.rowCount} ${result.rowCount === 1 ? 'account' : 'accounts'} to Budget for ${monthYearShort(currentYm)}.`;
@@ -366,7 +366,7 @@ export function Paydown() {
       toast.success(message, {
         description,
         action: result.rowCount > 0
-          ? { label: 'Open Budget', onClick: () => navigate('/budget') }
+          ? { label: 'Open Budget', onClick: () => void navigate('/budget') }
           : undefined,
       });
     },
@@ -825,7 +825,7 @@ function AccountEditModal({
             <DialogTitle>Edit {account.name}</DialogTitle>
           </DialogHeader>
           <form
-            onSubmit={async (e) => {
+            onSubmit={(e) => void (async () => {
               e.preventDefault();
               if (!canSave || saving) return;
               const aprNum = (Number(apr) || 0) / 100;
@@ -839,7 +839,7 @@ function AccountEditModal({
               } finally {
                 setSaving(false);
               }
-            }}
+            })()}
             className="flex flex-col gap-3"
           >
             <FieldGroup>

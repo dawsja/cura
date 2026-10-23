@@ -43,7 +43,7 @@ export function Categories() {
     onSuccess: () => {
       setNewName('');
       setShowAddCategory(false);
-      qc.invalidateQueries({ queryKey: ['categories'] });
+      void qc.invalidateQueries({ queryKey: ['categories'] });
     },
   });
   const delMain = useMutation({
@@ -58,7 +58,7 @@ export function Categories() {
   const addSub = useMutation({
     mutationFn: (input: { mainCategoryId: string; name: string }) =>
       api.post(`/api/categories/${input.mainCategoryId}/sub`, { name: input.name }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['categories'] }),
   });
   const delSub = useMutation({
     mutationFn: (input: { mainCategoryId: string; subCategoryId: string }) =>
@@ -69,12 +69,12 @@ export function Categories() {
     mutationFn: (input: { mainCategoryId: string; subCategoryId: string; name: string }) =>
       api.patch(`/api/categories/${input.mainCategoryId}/sub/${input.subCategoryId}`, { name: input.name }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categories'] });
-      qc.invalidateQueries({ queryKey: ['transactions'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      qc.invalidateQueries({ queryKey: ['rules'] });
-      qc.invalidateQueries({ queryKey: ['budget'] });
-      qc.invalidateQueries({ queryKey: ['reports'] });
+      void qc.invalidateQueries({ queryKey: ['categories'] });
+      void qc.invalidateQueries({ queryKey: ['transactions'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['rules'] });
+      void qc.invalidateQueries({ queryKey: ['budget'] });
+      void qc.invalidateQueries({ queryKey: ['reports'] });
     },
   });
   // Drag-to-reorder. Optimistic: we mutate the React Query cache
@@ -106,8 +106,8 @@ export function Categories() {
       if (ctx?.previous) qc.setQueryData(['categories'], ctx.previous);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['categories'] });
-      qc.invalidateQueries({ queryKey: ['budget'] });
+      void qc.invalidateQueries({ queryKey: ['categories'] });
+      void qc.invalidateQueries({ queryKey: ['budget'] });
     },
   });
 
@@ -750,7 +750,7 @@ function CategoryGroup({
 
 function invalidateCategoryDependents(qc: QueryClient) {
   for (const queryKey of ['categories', 'rules', 'dashboard', 'budget', 'reports', 'transactions']) {
-    qc.invalidateQueries({ queryKey: [queryKey] });
+    void qc.invalidateQueries({ queryKey: [queryKey] });
   }
 }
 
@@ -803,7 +803,7 @@ function EditableMainCategory({
   if (editing) {
     return (
       <div className="min-w-0 flex-1">
-        <form onSubmit={save} className="flex items-center gap-2">
+        <form onSubmit={(event) => void save(event)} className="flex items-center gap-2">
           <Input
             autoFocus
             value={name}
@@ -914,7 +914,7 @@ function EditableSubCategory({
   if (editing) {
     return (
       <li className="py-2 text-sm">
-        <form onSubmit={save} className="flex items-center gap-2">
+        <form onSubmit={(event) => void save(event)} className="flex items-center gap-2">
           <Input
             autoFocus
             value={name}
@@ -1017,7 +1017,7 @@ function AddSub({ onAdd }: { onAdd: (name: string) => Promise<unknown> }) {
   const [busy, setBusy] = useState(false);
   return (
     <form
-      onSubmit={async (e) => {
+      onSubmit={(e) => void (async () => {
         e.preventDefault();
         if (!name.trim()) return;
         setBusy(true);
@@ -1030,7 +1030,7 @@ function AddSub({ onAdd }: { onAdd: (name: string) => Promise<unknown> }) {
         } finally {
           setBusy(false);
         }
-      }}
+      })()}
       className="mt-2 flex flex-wrap gap-2"
     >
       <FieldGroup className="flex-row flex-wrap gap-2">

@@ -325,7 +325,7 @@ export function Dashboard() {
       } else if (!hasBudget) {
         leftValue = <span className="text-muted-foreground">—</span>;
         leftSub = (
-          <Button type="button" variant="link" className="h-auto p-0 md:h-auto" onClick={() => navigate('/budget')}>
+          <Button type="button" variant="link" className="h-auto p-0 md:h-auto" onClick={() => void navigate('/budget')}>
             Set a budget
           </Button>
         );
@@ -378,7 +378,7 @@ export function Dashboard() {
           <CardHeader>
             <CardTitle>Budget lines to watch</CardTitle>
             <CardAction>
-              <Button type="button" variant="link" onClick={() => navigate('/budget')}>
+              <Button type="button" variant="link" onClick={() => void navigate('/budget')}>
                 Open budget <ArrowRight data-icon="inline-end" />
               </Button>
             </CardAction>
@@ -389,7 +389,7 @@ export function Dashboard() {
           ) : budgetError ? (
             <p className="py-4 text-center text-sm text-destructive">Could not load this month's budget.</p>
           ) : monthBudget.hotspots.length === 0 ? (
-            <EmptyAction message="No expense budget this month." action="Set a budget" onClick={() => navigate('/budget')} />
+            <EmptyAction message="No expense budget this month." action="Set a budget" onClick={() => void navigate('/budget')} />
           ) : (
             <ul className="divide-y divide-border border-t border-border">
               {monthBudget.hotspots.map((row) => {
@@ -423,7 +423,7 @@ export function Dashboard() {
           <CardHeader>
             <CardTitle>Coming up</CardTitle>
             <CardAction>
-              <Button type="button" variant="link" onClick={() => navigate('/recurring')}>
+              <Button type="button" variant="link" onClick={() => void navigate('/recurring')}>
                 All recurring <ArrowRight data-icon="inline-end" />
               </Button>
             </CardAction>
@@ -434,7 +434,7 @@ export function Dashboard() {
           ) : recurring.isError ? (
             <p className="py-4 text-center text-sm text-destructive">Could not load upcoming charges.</p>
           ) : upcomingCharges.length === 0 ? (
-            <EmptyAction message="No upcoming charges." action="See recurring" onClick={() => navigate('/recurring')} />
+            <EmptyAction message="No upcoming charges." action="See recurring" onClick={() => void navigate('/recurring')} />
           ) : (
             <ul className="divide-y divide-border border-t border-border">
               {upcomingCharges.map((charge) => (
@@ -463,7 +463,7 @@ export function Dashboard() {
           <CardHeader>
             <CardTitle>Save up</CardTitle>
             <CardAction>
-              <Button type="button" variant="link" onClick={() => navigate('/saveup')}>
+              <Button type="button" variant="link" onClick={() => void navigate('/saveup')}>
                 Goals <ArrowRight data-icon="inline-end" />
               </Button>
             </CardAction>
@@ -474,7 +474,7 @@ export function Dashboard() {
           ) : goals.isError ? (
             <p className="py-4 text-center text-sm text-destructive">Could not load savings goals.</p>
           ) : goalRows.length === 0 ? (
-            <EmptyAction message="No savings goals yet." action="Add a goal" onClick={() => navigate('/saveup')} />
+            <EmptyAction message="No savings goals yet." action="Add a goal" onClick={() => void navigate('/saveup')} />
           ) : (
             <ul className="flex flex-col gap-3">
               {goalRows.map((goal) => {
@@ -541,7 +541,7 @@ export function Dashboard() {
           <CardHeader>
             <CardTitle>Accounts</CardTitle>
             <CardAction>
-              <Button type="button" variant="link" onClick={() => navigate('/accounts')}>
+              <Button type="button" variant="link" onClick={() => void navigate('/accounts')}>
                 Manage <ArrowRight data-icon="inline-end" />
               </Button>
             </CardAction>
@@ -562,7 +562,7 @@ export function Dashboard() {
             })}
             {accounts.data?.length === 0 && (
               <li>
-                <EmptyAction message="No accounts yet." action="Add an account" onClick={() => navigate('/accounts')} />
+                <EmptyAction message="No accounts yet." action="Add an account" onClick={() => void navigate('/accounts')} />
               </li>
             )}
           </ul>
@@ -581,7 +581,7 @@ export function Dashboard() {
             </CardDescription>
           )}
           <CardAction>
-            <Button type="button" variant="link" onClick={() => navigate('/transactions')}>
+            <Button type="button" variant="link" onClick={() => void navigate('/transactions')}>
               View all <ArrowRight data-icon="inline-end" />
             </Button>
           </CardAction>

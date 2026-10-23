@@ -17,7 +17,8 @@
     "jobs:rollforward": "bun run src/jobs/budget-rollforward.ts",
     "jobs:retention": "bun run src/jobs/retention.ts",
     "bootstrap:token": "bun run scripts/bootstrap-token.ts",
-    "lint": "bun run --bun eslint .",
+    "test": "bun test --preload ./tests/setup.ts",
+    "lint": "bun run --bun eslint . --max-warnings=0",
     "typecheck": "bun run tsc --noEmit"
   },
   "dependencies": {
@@ -25,7 +26,7 @@
     "@modelcontextprotocol/sdk": "1.32.1",
     "better-auth": "^1.6.20",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.34",
+    "hono": "^4.13.11",
     "nanoid": "^5.0.7",
     "node-cron": "^4.6.0",
     "pino": "^9.5.0",
@@ -38,13 +39,14 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "pino-pretty": "^11.3.0",
     "prettier": "^3.3.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.0.0"
   },
   "overrides": {
-    "brace-expansion": "^1.1.18",
+    "brace-expansion": "^1.1.21",
     "esbuild": "^0.25.12"
   }
 }

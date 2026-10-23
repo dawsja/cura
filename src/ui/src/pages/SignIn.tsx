@@ -49,7 +49,7 @@ export function SignIn() {
 
   useEffect(() => {
     if (fromSignOut) {
-      qc.invalidateQueries({ queryKey: ['me'] });
+      void qc.invalidateQueries({ queryKey: ['me'] });
     }
   }, [fromSignOut, qc]);
 
@@ -82,7 +82,7 @@ export function SignIn() {
       await qc.invalidateQueries({ queryKey: ['me'] });
       const me = await fetchMe();
       if (!me) throw new Error('sign-in succeeded but no session found');
-      navigate(callbackURL);
+      void navigate(callbackURL);
     } catch (e2) {
       setErr((e2 as Error).message);
     } finally {
@@ -176,7 +176,7 @@ export function SignIn() {
         <AuthBrand title={title} subtitle={subtitle} />
 
         {showLocalForm && (
-          <form onSubmit={onSubmit} className="flex flex-col gap-3">
+          <form onSubmit={(event) => void onSubmit(event)} className="flex flex-col gap-3">
             <AuthTextField
               label="Email"
               type="email"

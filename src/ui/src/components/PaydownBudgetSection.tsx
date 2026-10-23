@@ -104,7 +104,7 @@ export function PaydownBudgetSection({
           </Alert>
         </div>
       ) : displayRows.length === 0 ? (
-        <EmptyState onSyncClick={() => navigate('/paydown')} synced={!!meta.syncedAt} />
+        <EmptyState onSyncClick={() => void navigate('/paydown')} synced={!!meta.syncedAt} />
       ) : (
         <>
           {meta.syncedAt && (

@@ -139,16 +139,16 @@ export function ReviewsProvider({ children }: { children: ReactNode }) {
       if (typeof ctx?.prevCount === 'number') {
         qc.setQueryData(['reviews', 'count'], ctx.prevCount);
       }
-      qc.invalidateQueries({ queryKey: ['reviews', 'queue'], exact: true });
-      qc.invalidateQueries({ queryKey: ['reviews', 'count'], exact: true });
+      void qc.invalidateQueries({ queryKey: ['reviews', 'queue'], exact: true });
+      void qc.invalidateQueries({ queryKey: ['reviews', 'count'], exact: true });
     },
     onSuccess: async () => {
-      qc.invalidateQueries({ queryKey: ['reviews', 'count'] });
-      qc.invalidateQueries({ queryKey: ['transactions'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      qc.invalidateQueries({ queryKey: ['budget'] });
-      qc.invalidateQueries({ queryKey: ['reports'] });
-      qc.invalidateQueries({ queryKey: ['notifications'] });
+      void qc.invalidateQueries({ queryKey: ['reviews', 'count'] });
+      void qc.invalidateQueries({ queryKey: ['transactions'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['budget'] });
+      void qc.invalidateQueries({ queryKey: ['reports'] });
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
       setModalCompleted((current) => current + 1);
       const refreshed = await queueQ.refetch();
       if (!refreshed.isError && refreshed.data?.count === 0) celebrate();
@@ -182,12 +182,12 @@ export function ReviewsProvider({ children }: { children: ReactNode }) {
       }
     },
     onSuccess: async () => {
-      qc.invalidateQueries({ queryKey: ['reviews', 'count'] });
-      qc.invalidateQueries({ queryKey: ['transactions'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      qc.invalidateQueries({ queryKey: ['budget'] });
-      qc.invalidateQueries({ queryKey: ['reports'] });
-      qc.invalidateQueries({ queryKey: ['notifications'] });
+      void qc.invalidateQueries({ queryKey: ['reviews', 'count'] });
+      void qc.invalidateQueries({ queryKey: ['transactions'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['budget'] });
+      void qc.invalidateQueries({ queryKey: ['reports'] });
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
       const refreshed = await queueQ.refetch();
       if (!refreshed.isError && refreshed.data?.count === 0) celebrate();
     },

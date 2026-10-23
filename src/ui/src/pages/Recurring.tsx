@@ -117,8 +117,8 @@ export function Recurring() {
   const [editing, setEditing] = useState<RecurringCharge | 'new' | null>(null);
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['recurring'] });
-    qc.invalidateQueries({ queryKey: ['notifications'] });
+    void qc.invalidateQueries({ queryKey: ['recurring'] });
+    void qc.invalidateQueries({ queryKey: ['notifications'] });
   };
 
   const saveManual = useMutation({
@@ -154,8 +154,8 @@ export function Recurring() {
       if (ctx?.prev) qc.setQueryData(['recurring'], ctx.prev);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['recurring'] });
-      qc.invalidateQueries({ queryKey: ['notifications'] });
+      void qc.invalidateQueries({ queryKey: ['recurring'] });
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 
