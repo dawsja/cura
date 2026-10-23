@@ -835,8 +835,8 @@ function McpAccessSection() {
         </CardTitle>
         <CardDescription>
           AI assistants and automations can read your balances, transactions, budgets, and reports through
-          the Cura Money MCP server. Tokens with write access can also categorize transactions, work through
-          reviews, manage rules, and set budgets.
+          the Cura Money MCP server. Tokens with write access can also manage your money the way this app does:
+          transactions, reviews, accounts, categories, rules, budgets, goals, and recurring charges.
         </CardDescription>
         <CardAction>
           <Button type="button" size="sm" onClick={() => setCreating(true)}>
@@ -1060,8 +1060,9 @@ function CreateMcpTokenDialog({
                 <FieldDescription>
                   {access === 'read'
                     ? 'The app can see your finances but cannot change anything.'
-                    : 'The app can also change transaction categories, review transactions, create and run rules, '
-                      + 'and set budgets, with the same checks as this app. It cannot delete transactions or accounts.'}
+                    : 'The app can also add, edit, and delete transactions, accounts, categories, rules, goals, '
+                      + 'and recurring charges, and set budgets, with the same checks as this app. Only give write '
+                      + 'access to apps you trust to change your data.'}
                 </FieldDescription>
               </Field>
               <Field>

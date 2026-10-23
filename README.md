@@ -169,17 +169,21 @@ money the way the web app does:
 | Web app | MCP tools |
 | --- | --- |
 | Transactions: change a category, then "Create scoped rule" | `categorize_transaction` (with `createRule`), `bulk_categorize_transactions` |
+| Transactions: add, edit, split, delete | `add_transaction`, `update_transaction`, `split_transaction`, `delete_transaction` |
 | Review dialog | `review_transaction`, `accept_all_reviews` |
 | Rules page | `create_rule`, `create_rule_from_transaction`, `update_rule`, `delete_rule`, `run_rules` |
 | Budget page, including "Apply to future months" and Pay down rows | `set_budget`, `set_debt_payment` |
-| Pay down: "Save to Budget" | `save_debt_plan_to_budget` |
-| Categories page | `create_category`, `create_subcategory` |
+| Pay down page: debt settings and "Save to Budget" | `update_paydown_settings`, `save_debt_plan_to_budget` |
+| Accounts page, including "Sync now" | `add_account`, `update_account`, `set_account_hidden`, `delete_account`, `sync_bank_accounts` |
+| Categories page | `create_category`, `create_subcategory`, `rename_category`, `rename_subcategory`, `delete_category`, `delete_subcategory`, `reorder_categories` |
+| Goals page | `create_goal`, `update_goal`, `delete_goal` |
+| Transactions page recurring picker; Recurring page | `set_recurring_charge` (weekly, monthly, or yearly), `remove_recurring_charge`, `add_manual_recurring_charge`, `update_manual_recurring_charge` |
 
 Write tools run the same checks as the web app. As there, changing a
 transaction never creates or edits a rule by itself, a new rule only changes
 existing transactions when it is run, and a budget amount applies to one month
-unless it is applied to future months. Write tools cannot delete transactions,
-accounts, or categories.
+unless it is applied to future months. Deleting tools are marked destructive so
+clients can ask before running them; bank-synced accounts can only be hidden.
 
 The endpoint is `POST /mcp` (Streamable HTTP, stateless, JSON responses). Clients
 authenticate with a personal access token:
