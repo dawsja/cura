@@ -38,7 +38,7 @@ import { buildBudgetView } from './budget-view';
 import { CalendarDate, READ_ONLY, YearMonth, currentYearMonth, defineTool, run, type McpContext } from './tool-kit';
 import { registerWriteTools } from './write-tools';
 
-const SERVER_VERSION = '1.1.0';
+const SERVER_VERSION = '1.2.0';
 
 const READ_INSTRUCTIONS =
   'Access to one Cura Money user\'s personal finances. Amounts are in major currency units '
@@ -53,7 +53,10 @@ const WRITE_INSTRUCTIONS =
   + 'a rule by itself; pass createRule or call create_rule_from_transaction when the user wants future imports '
   + 'handled the same way. Rules only change existing transactions when run with run_rules. Prefer '
   + 'review_transaction for items from list_pending_reviews. Budget amounts apply to one month unless '
-  + 'applyToFutureMonths is true. Confirm with the user before bulk changes or deleting a rule.';
+  + 'applyToFutureMonths is true. Amounts are positive; balances of credit and loan accounts are the amount owed. '
+  + 'Recurring charges are marked from a transaction or merchant with set_recurring_charge; '
+  + 'add_manual_recurring_charge is for charges with no transactions yet. Confirm with the user before bulk '
+  + 'changes, deleting anything, changing an account to investment, or syncing the bank.';
 
 export function createFinanceMcpServer(ctx: McpContext): McpServer {
   const { userId } = ctx;
@@ -121,6 +124,7 @@ export function createFinanceMcpServer(ctx: McpContext): McpServer {
           id: a.id,
           name: a.alias || a.name,
           canonicalName: a.name,
+          alias: a.alias ?? null,
           type: a.type,
           balance: a.balance,
           isLiability: a.type === 'credit' || a.type === 'loan',
@@ -130,6 +134,7 @@ export function createFinanceMcpServer(ctx: McpContext): McpServer {
           interestRate: a.interestRate,
           minPayment: a.minPayment,
           plannedPayment: a.plannedPayment,
+          includeInPaydown: a.includeInPaydown,
         })),
       };
     }),
@@ -326,8 +331,8 @@ export function createFinanceMcpServer(ctx: McpContext): McpServer {
     {
       title: 'Recurring charges',
       description:
-        'Detected and user-marked recurring charges (subscriptions, bills) with frequency, typical amount, '
-        + 'and the next expected date.',
+        'Detected, user-marked, and manually added recurring charges (subscriptions, bills) with frequency, latest '
+        + 'amount, and the next expected date. Manual entries have manual: true and an id.',
       annotations: READ_ONLY,
     },
     run('list_recurring_charges', ctx, async () => {

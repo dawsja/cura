@@ -13,9 +13,10 @@ import { env, resolveOrigin } from './env';
 /** Read access to the user's finances. Every token has it. */
 export const MCP_READ_SCOPE = 'finance:read';
 /**
- * Changes made through the same rules as the web app: transaction
- * categories, reviews, rules, budgets, and categories. Granted only when
- * the user creates a token with read and write access.
+ * Changes made through the same rules as the web app: transactions,
+ * reviews, accounts, categories, rules, budgets, paydown, goals, and
+ * recurring charges, including deletes. Granted only when the user creates
+ * a token with read and write access.
  */
 export const MCP_WRITE_SCOPE = 'finance:write';
 
