@@ -90,7 +90,7 @@ const SimpleFinAccountSchema = z.object({
   org: z.object({ id: z.string().optional(), name: z.string().optional(), url: z.string().optional() }).optional(),
   conn_id: z.string().optional(),
   'available-balance': NumericSchema.optional(),
-  extra: z.record(z.unknown()).optional(),
+  extra: z.record(z.string(), z.unknown()).optional(),
   transactions: z.array(SimpleFinTransactionSchema).optional(),
 }).passthrough();
 const SimpleFinErrorSchema = z.object({

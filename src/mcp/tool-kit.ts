@@ -93,14 +93,14 @@ type RegisterTool = (
 /**
  * Typed front for `McpServer.registerTool`. The SDK's own signature infers
  * across zod v3 and v4 shapes, which makes `tsc` exhaust memory with this
- * many tools; inferring from our zod v3 shape here keeps checking cheap.
+ * many tools; inferring from our zod shape here keeps checking cheap.
  * The SDK still validates arguments against `inputSchema` at runtime.
  */
-export function defineTool<S extends z.ZodRawShape>(
+export function defineTool<S extends z.ZodRawShape = Record<never, never>>(
   server: McpServer,
   name: string,
   config: ToolConfig<S>,
-  handler: (args: z.infer<z.ZodObject<S>>) => Promise<CallToolResult>,
+  handler: (args: z.infer<z.ZodObject<NoInfer<S>>>) => Promise<CallToolResult>,
 ): void {
   const register = server.registerTool.bind(server) as unknown as RegisterTool;
   register(name, config, (args) => handler(args as z.infer<z.ZodObject<S>>));
