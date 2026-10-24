@@ -28,10 +28,21 @@ function DropdownMenuTrigger({
   )
 }
 
+// Radix focuses menu items on pointer hover, so the focus it restores to the
+// trigger on close can match :focus-visible and flash the ring after a mouse
+// click. Track the last input modality and only restore focus for keyboard
+// closes, where the ring is wanted.
+let lastInputWasPointer = false
+if (typeof document !== "undefined") {
+  document.addEventListener("pointerdown", () => { lastInputWasPointer = true }, true)
+  document.addEventListener("keydown", () => { lastInputWasPointer = false }, true)
+}
+
 function DropdownMenuContent({
   className,
   align = "start",
   sideOffset = 4,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   return (
@@ -40,6 +51,10 @@ function DropdownMenuContent({
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         align={align}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event)
+          if (lastInputWasPointer) event.preventDefault()
+        }}
         className={cn("z-50 max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-xl shadow-black/40 ring-1 ring-border-strong duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
         {...props}
       />
