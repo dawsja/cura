@@ -20,6 +20,7 @@ import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin as adminPlugin } from 'better-auth/plugins/admin';
 import { genericOAuth } from 'better-auth/plugins/generic-oauth';
+import { mapOidcProfileToUser } from './oidc-profile';
 import { ac, admin as adminRole, user as userRole } from './permissions';
 import { db } from '@/db/client';
 import * as schema from '@/db/schema';
@@ -126,11 +127,10 @@ export function createAuth(providers: AuthOidcProvider[]) {
         // If you want to allow only specific providers to link implicitly,
         // list them here. Empty = all configured providers are allowed.
         trustedProviders: [],
-        // Refresh the user's `name` and `image` from the OIDC profile on
-        // every sign-in. The user table's `email` is still the primary
-        // key (never overwritten by the IdP — see comment below) but the
-        // display name follows whatever the IdP says it is. Set to false
-        // if you want the name to be locked after first link.
+        // Copy the user's `name` and `image` from the OIDC profile when an
+        // IdP identity is first linked to an existing local user. Better
+        // Auth only applies this at link time; the per-sign-in refresh is
+        // the provider's `overrideUserInfo` option below.
         updateUserInfoOnLink: true,
       },
     },
@@ -188,6 +188,13 @@ export function createAuth(providers: AuthOidcProvider[]) {
           // Existing users may sign in or link by verified email, but an
           // arbitrary IdP identity cannot silently create a new tenant.
           disableImplicitSignUp: true,
+          // Refresh `name` and `image` from the IdP on every sign-in, not
+          // only on first link. Better Auth also writes the profile email
+          // here, so mapOidcProfileToUser pins it to the local email once
+          // the IdP subject is linked: the local email stays the source of
+          // truth.
+          overrideUserInfo: true,
+          mapProfileToUser: (profile) => mapOidcProfileToUser(p.providerId, profile),
           // Dynamic authorize-URL params. Better Auth's genericOAuth plugin
           // accepts the static `prompt` field only at config time (not from
           // the request body, since the sign-in body schema doesn't include
