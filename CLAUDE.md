@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Cura Money uses Bun 1.3+ with independently installed API and UI packages. The Hono API starts at `src/index.ts`; routes live in `src/routes/`, data access in `src/db/queries.ts`, schemas in `src/db/schema/`, shared logic in `src/lib/`, and scheduled work in `src/jobs/`. Drizzle migrations are under `drizzle/`.
+Cura Money uses Bun 1.4.4+ with independently installed API and UI packages. The Hono API starts at `src/index.ts`; routes live in `src/routes/`, data access in `src/db/queries.ts`, schemas in `src/db/schema/`, shared logic in `src/lib/`, and scheduled work in `src/jobs/`. Drizzle migrations are under `drizzle/`.
 
 The React/Vite SPA is in `src/ui/`; source assets are in `src/ui/public/`. Vite generates root `public/index.html` and `public/assets/`; do not edit them directly.
 

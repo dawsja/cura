@@ -21,7 +21,7 @@
 # =============================================================================
 
 ARG APP_REVISION=""
-ARG BUN_IMAGE=oven/bun:1.3
+ARG BUN_IMAGE=oven/bun:1.4.4
 
 # ---- Builder (dev target: full deps, UI built, whole source tree) ---------
 FROM ${BUN_IMAGE} AS builder

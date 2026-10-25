@@ -189,15 +189,24 @@ export async function secureFetch(
       const remainingMs = options.totalDeadlineMs - (Date.now() - startedAt);
       if (remainingMs <= 0) throw new SecureFetchError('The SimpleFIN request timed out.', 'timeout');
       try {
+        // The destination is user-supplied, so never let the runtime decode a
+        // compressed body (CVE-2026-111497 was a Brotli decoder RCE). This also
+        // makes maxBodyBytes bound the bytes actually received.
         response = await fetch(currentUrl, {
           method: options.method,
-          headers: options.headers,
+          headers: { ...options.headers, 'Accept-Encoding': 'identity' },
           redirect: 'manual',
+          decompress: false,
           signal: AbortSignal.timeout(Math.min(options.timeoutMs, remainingMs)),
         });
       } catch {
         networkFailure = true;
         break;
+      }
+      const encoding = response.headers.get('content-encoding')?.trim().toLowerCase();
+      if (encoding && encoding !== 'identity') {
+        await response.body?.cancel().catch(() => undefined);
+        throw new SecureFetchError('The SimpleFIN server sent an unsupported compressed response.', 'unsupported_encoding');
       }
 
       if (response.status < 300 || response.status >= 400) break;
