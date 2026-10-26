@@ -16,6 +16,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { requestId } from 'hono/request-id';
 import { getAuth, initAuth, isLocalAuthDisabled } from '@/auth';
 import { ensureSetupState } from '@/auth/setup';
+import { clientIp, withClientIp } from '@/lib/client-ip';
 import { guard } from '@/lib/guard';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
@@ -167,7 +168,9 @@ app.use('/api/auth/*', async (c, next) => {
 });
 
 // ---- Better Auth handler (public, mounted BEFORE guard) -----------------
-app.on(['GET', 'POST'], '/api/auth/*', (c) => getAuth().handler(c.req.raw));
+//    Its sign-in rate limit is keyed on the client IP resolved here from the
+//    TCP peer and trusted proxies, never on headers the client controls.
+app.on(['GET', 'POST'], '/api/auth/*', (c) => getAuth().handler(withClientIp(c.req.raw, clientIp(c))));
 
 // ---- Setup wizard (public until bootstrap completes) -------------------
 app.route('/api/setup', setupRoutes);

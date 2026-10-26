@@ -143,6 +143,13 @@ direct HTTP access on localhost or a LAN address:
 example environment file. Use `auto` (or `true`) behind HTTPS. Existing
 installations without this setting retain their previous production default.
 
+Sign-in and setup rate limits are keyed on the client IP. Cura takes it from the
+TCP connection and reads `X-Forwarded-For` only from a trusted proxy, set with
+`TRUSTED_PROXIES` (comma-separated IPs or CIDR ranges). Left empty, loopback and
+private networks are trusted, which covers a proxy on the same host or Compose
+network. List your proxy's address if it connects from a public IP, or set
+`none` when untrusted clients can reach Cura directly from a private address.
+
 See `.env.example` for the full list. `RUN_CRON=true` enables the hardcoded UTC
 schedules; set it to `false` to disable scheduled work. A job that is still
 running is never started a second time. Log level and port have

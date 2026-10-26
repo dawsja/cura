@@ -9,6 +9,7 @@
  * headers. Set them only when you want a stable URL across all requests —
  * typically when running behind a domain-fronting proxy.
  */
+import { isIP } from 'node:net';
 import { z } from 'zod';
 
 const httpOrigin = z.string().default('').superRefine((value, ctx) => {
@@ -58,6 +59,19 @@ const previousEncryptionKeys = z.preprocess(
   }),
 );
 
+const trustedProxies = z.string().trim().default('').superRefine((value, ctx) => {
+  if (!value || value === 'none') return;
+  for (const entry of value.split(',').map((part) => part.trim()).filter(Boolean)) {
+    const [address = '', prefix, extra] = entry.split('/');
+    const family = isIP(address);
+    const maxPrefix = family === 6 ? 128 : 32;
+    const validPrefix = prefix === undefined || (/^\d+$/.test(prefix) && Number(prefix) <= maxPrefix);
+    if (!family || !validPrefix || extra !== undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `"${entry}" is not an IP address or CIDR range` });
+    }
+  }
+});
+
 const timeZone = z.string().trim().min(1).max(100).default('UTC').superRefine((value, ctx) => {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: value }).format();
@@ -92,6 +106,12 @@ const Env = z.object({
   // `auto` preserves existing production behavior when no public URL is set,
   // while explicit false supports the documented direct-HTTP Compose setup.
   AUTH_SECURE_COOKIES: z.enum(['auto', 'true', 'false']).default('auto'),
+
+  // Reverse proxies whose X-Forwarded-For is believed when rate limiting
+  // sign-in and setup: comma-separated IPs or CIDR ranges. Empty trusts
+  // loopback and private networks (a proxy on the same host or Compose
+  // network); `none` trusts no proxy and keys limits on the TCP peer.
+  TRUSTED_PROXIES: trustedProxies,
 
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

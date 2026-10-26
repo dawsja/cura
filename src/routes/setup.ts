@@ -27,6 +27,7 @@ import { getAuth } from '@/auth';
 import { assertSecureOidcConfiguration } from '@/lib/oidc-url';
 import { db } from '@/db/client';
 import { user } from '@/db/schema/auth';
+import { clientIp } from '@/lib/client-ip';
 import { checkSetupRateLimit } from '@/lib/setup-rate-limit';
 import { env, useSecureAuthCookies } from '@/lib/env';
 
@@ -60,7 +61,7 @@ const ConfigureOidcSchema = z.object({
 const SetupMutationSchema = z.object({ token: z.string().min(8).optional() });
 
 function enforceSetupRateLimit(c: Parameters<typeof badRequest>[0]): Response | null {
-  const result = checkSetupRateLimit(c.req.raw);
+  const result = checkSetupRateLimit(clientIp(c) ?? 'unknown');
   if (result.allowed) return null;
   c.header('retry-after', String(result.retryAfter));
   return c.json({ error: 'Too many setup attempts; try again later.', code: 'rate_limited' }, 429);

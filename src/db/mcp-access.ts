@@ -9,6 +9,7 @@ import { and, count, desc, eq, isNotNull, lt } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from './client';
 import { mcpAccessTokens } from './schema/mcp_access_tokens';
+import { user } from './schema/auth';
 import { generateMcpAccessToken, scopeForAccess, type McpAccess, hashSecret, tokenDisplayPrefix } from '@/lib/mcp-access';
 import { logger } from '@/lib/logger';
 
@@ -55,12 +56,18 @@ export async function authenticateMcpAccessToken(token: string, now = new Date()
       scope: mcpAccessTokens.scope,
       expiresAt: mcpAccessTokens.expiresAt,
       lastUsedAt: mcpAccessTokens.lastUsedAt,
+      banned: user.banned,
+      banExpires: user.banExpires,
     })
     .from(mcpAccessTokens)
+    .innerJoin(user, eq(user.id, mcpAccessTokens.userId))
     .where(eq(mcpAccessTokens.tokenHash, hashSecret(token)))
     .limit(1);
   if (!row) return null;
   if (row.expiresAt && row.expiresAt.getTime() <= now.getTime()) return null;
+  // Better Auth's ban only deletes browser sessions, so tokens check it here.
+  // A ban without an expiry lasts until an admin lifts it.
+  if (row.banned && (!row.banExpires || row.banExpires.getTime() > now.getTime())) return null;
   if (!row.lastUsedAt || now.getTime() - row.lastUsedAt.getTime() > LAST_USED_RESOLUTION_MS) {
     await db.update(mcpAccessTokens).set({ lastUsedAt: now }).where(eq(mcpAccessTokens.id, row.id));
   }

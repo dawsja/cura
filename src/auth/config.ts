@@ -24,6 +24,7 @@ import { mapOidcProfileToUser } from './oidc-profile';
 import { ac, admin as adminRole, user as userRole } from './permissions';
 import { db } from '@/db/client';
 import * as schema from '@/db/schema';
+import { CLIENT_IP_HEADER } from '@/lib/client-ip';
 import { configuredExternalOrigin, env, resolveOrigin, useSecureAuthCookies } from '@/lib/env';
 
 /** Provider shape that gets handed to Better Auth's genericOAuth plugin. */
@@ -155,6 +156,10 @@ export function createAuth(providers: AuthOidcProvider[]) {
 
     advanced: {
       useSecureCookies: useSecureAuthCookies(),
+      // Only the address src/index.ts resolves from the TCP peer and
+      // TRUSTED_PROXIES. Better Auth's default (raw X-Forwarded-For) lets a
+      // client pick its own rate-limit bucket.
+      ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
     },
 
     rateLimit: {

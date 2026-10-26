@@ -19,16 +19,17 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { getAllUsers, deleteUserWithData, updateUserRole, type AdminUserRow } from '@/db/queries';
+import { getAllUsers, deleteUserWithData, revokeUserCredentials, updateUserRole, type AdminUserRow } from '@/db/queries';
 import { isLocalAuthDisabled } from '@/auth/local_auth';
 import { getAuth } from '@/auth';
 import { db } from '@/db/client';
 import { user as authUser } from '@/db/schema/auth';
 import { eq } from 'drizzle-orm';
-import { requireAdmin, routeParam } from '@/lib/tenant';
+import { requireAdmin, routeParam, userId, type AppEnv } from '@/lib/tenant';
 import { safe, notFound, badRequest, forbidden } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 
-export const adminUserRoutes = new Hono();
+export const adminUserRoutes = new Hono<AppEnv>();
 
 const createBody = z.object({
   name: z.string().min(1).max(120),
@@ -142,6 +143,11 @@ adminUserRoutes.post(
       if (statusCode === 404) return notFound(c, message);
       return badRequest(c, message);
     }
+    // A reset is how an admin evicts someone using the old password, so end
+    // every session and MCP token that password could have produced.
+    const adminId = userId(c);
+    const revoked = await revokeUserCredentials(id, adminId === id ? c.get('session').id : undefined);
+    logger.info({ userId: id, adminId, ...revoked }, 'admin: password reset revoked credentials');
     return c.json({ ok: true });
   }),
 );

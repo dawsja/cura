@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { createAuth } from '@/auth/config';
 import { mapOidcProfileToUser } from '@/auth/oidc-profile';
+import { CLIENT_IP_HEADER } from '@/lib/client-ip';
 import { db } from '@/db/client';
 import { user } from '@/db/schema/auth';
 import { createTestUser } from './helpers';
@@ -52,6 +53,7 @@ const auth = createAuth([{
 }]);
 
 // Better Auth rate-limits sign-in per client IP; give each sign-in its own.
+// This calls the handler directly, so it sets the header src/index.ts would.
 let clientIp = 0;
 
 async function signInWithOidc(claims: Record<string, unknown>): Promise<void> {
@@ -59,7 +61,7 @@ async function signInWithOidc(claims: Record<string, unknown>): Promise<void> {
   const ip = `203.0.113.${++clientIp}`;
   const start = await auth.handler(new Request('http://localhost/api/auth/sign-in/oauth2', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin: 'http://localhost', host: 'localhost', 'x-forwarded-for': ip },
+    headers: { 'content-type': 'application/json', origin: 'http://localhost', host: 'localhost', [CLIENT_IP_HEADER]: ip },
     body: JSON.stringify({ providerId: PROVIDER_ID, callbackURL: '/' }),
   }));
   expect(start.status).toBe(200);
@@ -69,7 +71,7 @@ async function signInWithOidc(claims: Record<string, unknown>): Promise<void> {
 
   const callback = await auth.handler(new Request(
     `http://localhost/api/auth/oauth2/callback/${PROVIDER_ID}?code=code&state=${state}`,
-    { headers: { cookie, host: 'localhost', 'x-forwarded-for': ip } },
+    { headers: { cookie, host: 'localhost', [CLIENT_IP_HEADER]: ip } },
   ));
   expect(callback.status).toBe(302);
   expect(callback.headers.get('location')).not.toContain('error');

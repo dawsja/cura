@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { db, sqlAll } from '../client';
 import { accounts } from '../schema/accounts';
 import { categories } from '../schema/categories';
@@ -9,7 +9,8 @@ import { settings } from '../schema/settings';
 import { goals } from '../schema/goals';
 import { monthlyPaydown, monthlyPaydownSnapshots } from '../schema/monthly_paydown';
 import { rules } from '../schema/rules';
-import { account as authAccount, user as authUser } from '../schema/auth';
+import { account as authAccount, session as authSession, user as authUser } from '../schema/auth';
+import { mcpAccessTokens } from '../schema/mcp_access_tokens';
 import { oidcProviders } from '../schema/oidc_providers';
 import { setupState } from '../schema/setup_state';
 
@@ -235,6 +236,31 @@ export async function deleteUserWithData(userId: string): Promise<{ deletedRows:
   });
 
   return { deletedRows };
+}
+
+/**
+ * Sign a user out everywhere after an admin resets their password: delete
+ * their browser sessions and MCP access tokens, so whoever held the old
+ * credentials (or a token created with them) loses access. `keepSessionId`
+ * spares the admin's own session when they reset their own password.
+ */
+export async function revokeUserCredentials(
+  userId: string,
+  keepSessionId?: string,
+): Promise<{ sessions: number; tokens: number }> {
+  return db.transaction(async (tx) => {
+    const sessions = await tx
+      .delete(authSession)
+      .where(keepSessionId
+        ? and(eq(authSession.userId, userId), ne(authSession.id, keepSessionId))
+        : eq(authSession.userId, userId))
+      .returning({ id: authSession.id });
+    const tokens = await tx
+      .delete(mcpAccessTokens)
+      .where(eq(mcpAccessTokens.userId, userId))
+      .returning({ id: mcpAccessTokens.id });
+    return { sessions: sessions.length, tokens: tokens.length };
+  });
 }
 
 /**

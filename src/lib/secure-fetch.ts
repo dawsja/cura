@@ -93,7 +93,14 @@ function isPublicIp(address: string): boolean {
   return second !== 0x0db8;
 }
 
-export async function validatePublicHttpsUrl(value: string): Promise<URL> {
+interface PublicTarget {
+  url: URL;
+  hostname: string;
+  /** A validated address to connect to, or undefined when the URL host is already an IP literal. */
+  address?: string;
+}
+
+async function resolvePublicTarget(value: string): Promise<PublicTarget> {
   let url: URL;
   try {
     url = new URL(value);
@@ -105,30 +112,53 @@ export async function validatePublicHttpsUrl(value: string): Promise<URL> {
   }
 
   const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
-  let addresses: string[];
   if (isIP(hostname)) {
-    addresses = [hostname];
-  } else {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const resolved = await Promise.race([
-        lookup(hostname, { all: true, verbatim: true }),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('DNS lookup timed out')), DNS_TIMEOUT_MS);
-          timer.unref();
-        }),
-      ]);
-      addresses = resolved.map(({ address }) => address);
-    } catch {
-      throw new SecureFetchError('The SimpleFIN server could not be resolved.', 'dns_failed');
-    } finally {
-      if (timer) clearTimeout(timer);
+    if (!isPublicIp(hostname)) {
+      throw new SecureFetchError('The SimpleFIN URL is not a permitted public destination.', 'unsafe_destination');
     }
+    return { url, hostname };
+  }
+  let addresses: string[];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const resolved = await Promise.race([
+      lookup(hostname, { all: true, verbatim: true }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('DNS lookup timed out')), DNS_TIMEOUT_MS);
+        timer.unref();
+      }),
+    ]);
+    addresses = resolved.map(({ address }) => address);
+  } catch {
+    throw new SecureFetchError('The SimpleFIN server could not be resolved.', 'dns_failed');
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   if (addresses.length === 0 || addresses.some((address) => !isPublicIp(address))) {
     throw new SecureFetchError('The SimpleFIN URL is not a permitted public destination.', 'unsafe_destination');
   }
-  return url;
+  return { url, hostname, address: addresses[0]! };
+}
+
+export async function validatePublicHttpsUrl(value: string): Promise<URL> {
+  return (await resolvePublicTarget(value)).url;
+}
+
+/**
+ * Connect to the address that was validated instead of letting fetch resolve
+ * the hostname again, which would let a DNS-rebinding server answer the guard
+ * with a public address and the request with a private one. The original Host
+ * header and TLS SNI are kept, and Bun still verifies the certificate against
+ * `serverName`.
+ */
+function pinnedRequest(
+  target: PublicTarget,
+  headers: Record<string, string>,
+): { url: URL; headers: Record<string, string>; tls?: { serverName: string } } {
+  if (!target.address) return { url: target.url, headers };
+  const url = new URL(target.url);
+  url.hostname = isIP(target.address) === 6 ? `[${target.address}]` : target.address;
+  return { url, headers: { ...headers, Host: target.url.host }, tls: { serverName: target.hostname } };
 }
 
 async function readBoundedBody(response: Response, maxBytes: number): Promise<Uint8Array> {
@@ -178,8 +208,8 @@ export async function secureFetch(
 ): Promise<{ response: Response; body: Uint8Array }> {
   const startedAt = Date.now();
   const maxAttempts = options.retry ? 3 : 1;
-  let currentUrl = await validatePublicHttpsUrl(input);
-  const initialOrigin = currentUrl.origin;
+  let current = await resolvePublicTarget(input);
+  const initialOrigin = current.url.origin;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let redirects = 0;
@@ -192,9 +222,11 @@ export async function secureFetch(
         // The destination is user-supplied, so never let the runtime decode a
         // compressed body (CVE-2026-111497 was a Brotli decoder RCE). This also
         // makes maxBodyBytes bound the bytes actually received.
-        response = await fetch(currentUrl, {
+        const pinned = pinnedRequest(current, { ...options.headers, 'Accept-Encoding': 'identity' });
+        response = await fetch(pinned.url, {
           method: options.method,
-          headers: { ...options.headers, 'Accept-Encoding': 'identity' },
+          headers: pinned.headers,
+          ...(pinned.tls ? { tls: pinned.tls } : {}),
           redirect: 'manual',
           decompress: false,
           signal: AbortSignal.timeout(Math.min(options.timeoutMs, remainingMs)),
@@ -215,11 +247,11 @@ export async function secureFetch(
       }
       const location = response.headers.get('location');
       if (!location) throw new SecureFetchError('The SimpleFIN server returned an invalid redirect.', 'redirect_rejected');
-      const redirected = await validatePublicHttpsUrl(new URL(location, currentUrl).toString());
-      if (redirected.origin !== initialOrigin) {
+      const redirected = await resolvePublicTarget(new URL(location, current.url).toString());
+      if (redirected.url.origin !== initialOrigin) {
         throw new SecureFetchError('The SimpleFIN server redirected to a different origin.', 'redirect_rejected');
       }
-      currentUrl = redirected;
+      current = redirected;
       redirects++;
     }
 
