@@ -73,12 +73,13 @@ async function enterGate(): Promise<void> {
   while (activeTx && txContext.getStore() !== activeTx) await activeTx.done;
 }
 
-function execute(sqlText: string, params: unknown[], method: Method): { rows: unknown[] } {
+function execute(sqlText: string, params: unknown[], method: Method): { rows: unknown[]; changes?: number } {
   const statement = getSqlite().query(sqlText);
   const bindings = params.map(toBinding);
   if (method === 'run') {
-    statement.run(...bindings);
-    return { rows: [] };
+    // drizzle returns this object from non-returning writes; Better Auth's
+    // adapter reads `changes` as the affected-row count.
+    return { rows: [], changes: statement.run(...bindings).changes };
   }
   const rows = statement.values(...bindings);
   // drizzle expects the first row itself (or undefined) for `get`.
