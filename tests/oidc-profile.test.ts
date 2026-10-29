@@ -59,14 +59,16 @@ let clientIp = 0;
 async function signInWithOidc(claims: Record<string, unknown>): Promise<void> {
   idTokenClaims = claims;
   const ip = `203.0.113.${++clientIp}`;
-  const start = await auth.handler(new Request('http://localhost/api/auth/sign-in/oauth2', {
+  const start = await auth.handler(new Request('http://localhost/api/auth/sign-in/social', {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: 'http://localhost', host: 'localhost', [CLIENT_IP_HEADER]: ip },
-    body: JSON.stringify({ providerId: PROVIDER_ID, callbackURL: '/' }),
+    body: JSON.stringify({ provider: PROVIDER_ID, callbackURL: '/', disableRedirect: true }),
   }));
   expect(start.status).toBe(200);
   const { url } = await start.json() as { url: string };
   const state = new URL(url).searchParams.get('state');
+  // The redirect URI registered with the IdP before Better Auth 1.7 stays valid.
+  expect(new URL(url).searchParams.get('redirect_uri')).toBe(`http://localhost/api/auth/oauth2/callback/${PROVIDER_ID}`);
   const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
 
   const callback = await auth.handler(new Request(
@@ -104,6 +106,19 @@ describe('OIDC profile refresh', () => {
     await signInWithOidc({ sub, email, email_verified: true, name: 'A' });
     await signInWithOidc({ sub, email: `changed-${randomUUID()}@example.test`, email_verified: true, name: 'B' });
     expect(await loadUser(userId)).toMatchObject({ id: userId, email, emailVerified: true, name: 'B' });
+  });
+});
+
+describe('OIDC sign-in', () => {
+  test('forwards prompt=login to the IdP after a local sign-out', async () => {
+    const start = await auth.handler(new Request('http://localhost/api/auth/sign-in/social', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'http://localhost', host: 'localhost', [CLIENT_IP_HEADER]: `203.0.113.${++clientIp}` },
+      body: JSON.stringify({ provider: PROVIDER_ID, callbackURL: '/', disableRedirect: true, additionalParams: { prompt: 'login' } }),
+    }));
+    expect(start.status).toBe(200);
+    const { url } = await start.json() as { url: string };
+    expect(new URL(url).searchParams.get('prompt')).toBe('login');
   });
 });
 

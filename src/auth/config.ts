@@ -20,6 +20,7 @@ import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin as adminPlugin } from 'better-auth/plugins/admin';
 import { genericOAuth } from 'better-auth/plugins/generic-oauth';
+import { legacyOidcCallback } from './legacy-oidc-callback';
 import { mapOidcProfileToUser } from './oidc-profile';
 import { ac, admin as adminRole, user as userRole } from './permissions';
 import { db } from '@/db/client';
@@ -200,26 +201,9 @@ export function createAuth(providers: AuthOidcProvider[]) {
           // truth.
           overrideUserInfo: true,
           mapProfileToUser: (profile) => mapOidcProfileToUser(p.providerId, profile),
-          // Dynamic authorize-URL params. Better Auth's genericOAuth plugin
-          // accepts the static `prompt` field only at config time (not from
-          // the request body, since the sign-in body schema doesn't include
-          // it). To force re-auth on a per-request basis (e.g. right after
-          // a local sign-out so the IdP doesn't silently re-authenticate
-          // using its own session cookie), the client passes
-          // `additionalData: { promptLogin: true }` in the body, and we
-          // translate that to `prompt=login` on the authorize URL here.
-          //
-          // Better Auth's typing requires this function to ALWAYS return a
-          // `Record<string, string>` — never undefined. Returning {} when
-          // no extra params are needed is the canonical no-op.
-          authorizationUrlParams: (ctx): Record<string, string> => {
-            const body = ctx.body as
-              | { additionalData?: { promptLogin?: boolean } }
-              | undefined;
-            return body?.additionalData?.promptLogin ? { prompt: 'login' } : {};
-          },
         })),
       }),
+      legacyOidcCallback(providers.map((p) => p.providerId)),
     );
   }
 

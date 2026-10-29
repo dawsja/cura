@@ -115,7 +115,7 @@ app.get('/ready', async (c) => {
 // internal API and does not traverse this HTTP middleware. When
 // `local_auth_disabled` is TRUE, sign-in/change-password via email+password
 // are also blocked. The OIDC endpoints
-// (/api/auth/sign-in/oauth2, /api/auth/oauth2/callback/*) are NOT
+// (/api/auth/sign-in/social, /api/auth/oauth2/callback/*) are NOT
 // gated here — they fall through to the Better Auth handler below.
 //
 // We only short-circuit POSTs against the known email/password

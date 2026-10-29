@@ -31,8 +31,8 @@ import { sealSecret } from '@/lib/secret-box';
 
 export const adminOidcRoutes = new Hono();
 
-// Better Auth's genericOAuth plugin always handles the IdP callback at this
-// path. The providerId is interpolated into the URL when the client redirects
+// OIDC providers handle the IdP callback at this path (kept stable across the
+// Better Auth 1.7 route change by src/auth/legacy-oidc-callback.ts). The providerId is interpolated into the URL when the client redirects
 // back from the IdP.
 const OAUTH2_CALLBACK_PATH = '/api/auth/oauth2/callback';
 

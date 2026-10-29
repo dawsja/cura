@@ -15,6 +15,8 @@ import type { User } from 'better-auth';
 import { db } from '@/db/client';
 import { account, user } from '@/db/schema/auth';
 
+type OidcMappedUser = Partial<Pick<User, 'name' | 'email' | 'emailVerified'>>;
+
 function claim(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
@@ -24,8 +26,8 @@ function claim(value: unknown): string | undefined {
 export async function mapOidcProfileToUser(
   providerId: string,
   profile: Record<string, unknown>,
-): Promise<Partial<User>> {
-  const mapped: Partial<User> = {};
+): Promise<OidcMappedUser> {
+  const mapped: OidcMappedUser = {};
 
   const name = claim(profile.name) ?? claim(profile.preferred_username);
   if (name) mapped.name = name;

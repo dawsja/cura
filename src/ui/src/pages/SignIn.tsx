@@ -94,11 +94,13 @@ export function SignIn() {
     setErr(null);
     setOidcBusy(providerId);
     try {
-      const body: Record<string, unknown> = { providerId, callbackURL };
+      const body: Record<string, unknown> = { provider: providerId, callbackURL, disableRedirect: true };
+      // Force re-auth right after a local sign-out so the IdP doesn't
+      // silently sign the user back in with its own session cookie.
       if (fromSignOut) {
-        body.additionalData = { promptLogin: true };
+        body.additionalParams = { prompt: 'login' };
       }
-      const resp = await fetch('/api/auth/sign-in/oauth2', {
+      const resp = await fetch('/api/auth/sign-in/social', {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
