@@ -159,6 +159,19 @@ export class SimpleFinError extends Error {
   }
 }
 
+/**
+ * Non-USD currencies in a SimpleFIN feed. SimpleFIN Bridge only connects US
+ * institutions and some (e.g. Chime) omit `currency`, so a missing or blank
+ * value is treated as USD rather than rejected.
+ */
+export function unsupportedSimpleFinCurrencies(accounts: Pick<SimpleFinAccount, 'currency'>[]): string[] {
+  return [...new Set(
+    accounts
+      .map((account) => account.currency?.trim().toUpperCase() || 'USD')
+      .filter((currency) => currency !== 'USD'),
+  )];
+}
+
 export function publicSimpleFinError(error: unknown): { message: string; code: string } {
   if (error instanceof SimpleFinError || error instanceof SecureFetchError) {
     return { message: error.message, code: error.code };
@@ -443,11 +456,7 @@ async function performSimpleFinSync(
   // Cura currently stores and reports one currency. Validate the complete
   // response before any sync state, account, or transaction write so a mixed
   // feed cannot leave a partially imported ledger.
-  const unsupportedCurrencies = [...new Set(
-    rawAccounts
-      .map((account) => account.currency?.trim().toUpperCase() || 'MISSING')
-      .filter((currency) => currency !== 'USD'),
-  )];
+  const unsupportedCurrencies = unsupportedSimpleFinCurrencies(rawAccounts);
   if (unsupportedCurrencies.length > 0) {
     throw new SimpleFinError(
       `SimpleFIN returned unsupported account currency: ${unsupportedCurrencies.join(', ')}. Only USD accounts can be synced.`,
