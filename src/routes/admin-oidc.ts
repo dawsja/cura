@@ -82,7 +82,7 @@ function publicProvider(
 
 const AddProviderSchema = z.object({
   providerId: z.string().min(1).max(64).regex(/^[a-z0-9_-]+$/i, {
-    message: 'providerId must be alphanumeric / dash / underscore',
+    message: 'providerId may contain only letters, digits, hyphens, and underscores',
   }),
   discoveryUrl: z.string().url(),
   clientId: z.string().min(1).max(256),

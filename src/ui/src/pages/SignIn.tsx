@@ -210,7 +210,7 @@ export function SignIn() {
             <AlertTitle>Local sign-in is disabled</AlertTitle>
             <AlertDescription>
               An admin has turned off email/password sign-in. Ask them to
-              add an OIDC provider in Settings → Authentication, or to
+              add an OIDC provider under Authentication in Settings, or to
               re-enable local sign-in.
             </AlertDescription>
           </Alert>

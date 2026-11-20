@@ -277,7 +277,7 @@ export function Recurring() {
             </EmptyMedia>
             <EmptyTitle>No recurring charges detected yet</EmptyTitle>
             <EmptyDescription>
-              As more transactions come in, recurring patterns will appear here automatically — or add one manually with <span className="font-semibold">Add recurring</span>.
+              Recurring charges appear here when Cura finds repeating transactions. You can also add one with <span className="font-semibold">Add recurring</span>.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -574,7 +574,7 @@ function ManualRecurringModal({
                 onChange={(ymd) => setDraft((d) => ({ ...d, anchorDate: ymd }))}
                 disabled={saving}
               />
-              <FieldDescription>Any real charge date works — the schedule projects forward from it.</FieldDescription>
+              <FieldDescription>Enter any past or upcoming charge date. Cura projects the schedule forward from it.</FieldDescription>
             </Field>
 
             <Field>

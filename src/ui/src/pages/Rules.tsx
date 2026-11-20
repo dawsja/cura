@@ -702,7 +702,7 @@ export function Rules() {
 
       {confirmation?.kind === 'delete' && (
         <ConfirmDialog
-          title={`Delete rule for “${confirmation.rule.matchValue}”?`}
+          title={`Delete rule for "${confirmation.rule.matchValue}"?`}
           confirmLabel="Delete rule"
           destructive
           onConfirm={() => deleteRule.mutateAsync(confirmation.rule.id)}
@@ -714,7 +714,7 @@ export function Rules() {
       )}
       {confirmation?.kind === 'run' && (
         <ConfirmDialog
-          title={`Run rule for “${confirmation.rule.matchValue}”?`}
+          title={`Run rule for "${confirmation.rule.matchValue}"?`}
           confirmLabel="Run rule"
           onConfirm={() => runRule.mutateAsync(confirmation.rule.id)}
           onClose={() => setConfirmation(null)}

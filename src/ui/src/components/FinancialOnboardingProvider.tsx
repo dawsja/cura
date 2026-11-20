@@ -72,26 +72,26 @@ interface StepDefinition {
 
 const STEPS: Record<StepId, StepDefinition> = {
   welcome: {
-    title: 'Build your financial foundation',
+    title: 'Set up Cura Money',
     body: 'Connect or add accounts, clean up imported data, review transactions, and create your first monthly budget. You can skip any step or leave the entire tutorial at any time.',
     action: 'Start tutorial',
   },
   accounts: {
     title: 'Start with your accounts',
-    body: 'Accounts power balances, transactions, budgets, debt plans, and savings goals. Open Accounts to choose how you want to begin.',
+    body: 'Balances, transactions, budgets, debt plans, and savings goals all depend on your accounts. Open Accounts to choose how you want to begin.',
     target: 'nav-accounts',
     action: 'Open accounts',
   },
   connect: {
     title: 'Connect with SimpleFIN',
-    body: 'SimpleFIN securely imports account balances and six months of transaction history, then keeps them synchronized. Skip this step if you prefer to enter an account manually.',
+    body: 'SimpleFIN imports account balances and six months of transaction history, then keeps them in sync. Skip this step if you prefer to enter an account manually.',
     target: 'simplefin-connect',
     path: '/accounts',
     action: 'See the manual option',
   },
   'manual-account': {
     title: 'Or add an account manually',
-    body: 'Manual accounts are useful when you do not use SimpleFIN or want to track an account yourself. Choose its type carefully because that determines whether the balance is an asset or amount owed.',
+    body: 'Add a manual account when you do not use SimpleFIN or want to track an account yourself. Its type decides whether the balance counts as an asset or as an amount owed.',
     target: 'manual-account-add',
     path: '/accounts',
     action: 'Continue to classification',
@@ -104,7 +104,7 @@ const STEPS: Record<StepId, StepDefinition> = {
     action: 'Continue',
   },
   categories: {
-    title: 'Shape your categories',
+    title: 'Set up your categories',
     body: 'Categories organize income, expenses, and transfers. Transactions and budgets use the leaf subcategories inside each group, and the order you set here is reused on the Budget page.',
     target: 'categories-add',
     path: '/categories',
@@ -112,21 +112,21 @@ const STEPS: Record<StepId, StepDefinition> = {
   },
   review: {
     title: 'Review imported transactions',
-    body: 'Save & next accepts a transaction. Check Create a rule to teach Cura the merchant. Keep suggestion accepts the imported category without training a rule. Pending reviews do not count in Home or budget actuals.',
+    body: 'Confirm and next accepts the category shown. Check Do this automatically next time to create a rule for the merchant. Accept all keeps every suggested category without creating rules. Pending reviews do not count in Home or budget actuals.',
     target: 'review-transactions',
     path: '/transactions',
     action: 'Open reviews',
   },
   transactions: {
     title: 'Your transaction workspace',
-    body: 'Search and filter your ledger, correct categories inline, or add cash and manual transactions here. Cura can remember merchant corrections as rules.',
+    body: 'Search and filter your ledger, correct categories inline, or add cash and manual transactions here. Cura can save a merchant correction as a rule.',
     target: 'add-transaction',
     path: '/transactions',
     action: 'Learn about rules',
   },
   rules: {
     title: 'Automate future categorization',
-    body: 'Rules remember how merchants should be categorized and typed. Reviews train them automatically, or you can create rules manually and reapply them to matching history.',
+    body: 'A rule sets the category and type for a merchant\'s transactions. Reviews can create rules for you, or you can create them by hand and run them on past transactions.',
     target: 'rules-intro',
     path: '/rules',
     action: 'Create a budget',
@@ -147,7 +147,7 @@ const STEPS: Record<StepId, StepDefinition> = {
   },
   paydown: {
     title: 'Build a debt payoff plan',
-    body: 'Pay down models credit cards and loans using planned payments, snowball, or avalanche strategies. Save the selected monthly plan into Budget when you are ready.',
+    body: 'Pay down models credit cards and loans using planned payments, snowball, or avalanche strategies. When you are ready, Save to Budget copies the selected plan to the Budget page.',
     target: 'paydown-summary',
     path: '/paydown',
     action: 'Explore savings goals',
@@ -160,7 +160,7 @@ const STEPS: Record<StepId, StepDefinition> = {
     action: 'View reports',
   },
   reports: {
-    title: 'Understand your financial trends',
+    title: 'Check your reports',
     body: 'Reports turn reviewed transactions into cash-flow, spending, merchant, pace, and net-worth views. You can rearrange report widgets and export your data from this page.',
     target: 'reports-header',
     path: '/reports',
@@ -168,13 +168,13 @@ const STEPS: Record<StepId, StepDefinition> = {
   },
   recurring: {
     title: 'Watch recurring spending',
-    body: 'Cura detects repeating charges from transaction history and estimates their monthly and yearly impact. Use this page to spot subscriptions and unexpected repeating costs.',
+    body: 'Cura detects repeating charges from transaction history and estimates what they cost per month and per year. Use this page to spot subscriptions and unexpected repeating costs.',
     target: 'recurring-summary',
     path: '/recurring',
     action: 'Finish tutorial',
   },
   complete: {
-    title: 'Your financial workspace is ready',
+    title: 'Tutorial complete',
     body: 'You have seen the full workflow: accounts, categories, reviews, rules, budgets, debt, savings goals, reports, and recurring charges. You can run this tutorial again from your profile menu at any time.',
     action: 'Go to Home',
   },

@@ -2,7 +2,7 @@
  * In-process cron scheduler. Started by src/index.ts on app boot (gated by
  * the `RUN_CRON` env var, default true).
  *
- * Schedules are HARDCODED — operators cannot tune them. Rationale:
+ * Schedules are hardcoded, and operators cannot change them. Rationale:
  *   - SIMPLEFIN_POLL_CRON respects SimpleFIN's documented <=24 requests/day
  *     quota. 12/day leaves headroom for the 4-call first-sync backfill
  *     and ad-hoc manual syncs.
@@ -13,9 +13,9 @@
  *   - MCP_AUTH_CLEANUP_CRON runs daily at 04:30 UTC and deletes MCP access
  *     tokens that expired more than 30 days ago.
  *
- * Every run uses local exclusion plus a session-level PostgreSQL advisory
- * lock, so replicas can safely leave cron enabled. The lock session is
- * separate from the pool connections used by the job itself.
+ * runExclusiveJob skips a tick while the same job is still running in this
+ * process. There is no cross-process lock, so run one app instance per
+ * database file.
  */
 import cron from 'node-cron';
 import type { ScheduledTask } from 'node-cron';
@@ -28,7 +28,7 @@ import { resetDemoDatabase } from '@/db/demo-reset';
 import { env } from '@/lib/env';
 import { runExclusiveJob, waitForActiveJobs, type JobName } from './lifecycle';
 
-// Hardcoded cron expressions — see file header for rationale.
+// Hardcoded cron expressions. The file header explains each schedule.
 const SIMPLEFIN_POLL_CRON = '17 */2 * * *'; // every 2 hours = 12 requests/day; avoid top-of-hour load
 const BUDGET_ROLLFORWARD_CRON = '0 0 1 * *'; // 1st of month, 00:00 UTC
 const RETENTION_CRON = '0 4 * * *'; // daily, 04:00 UTC

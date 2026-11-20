@@ -41,8 +41,8 @@ import { registerWriteTools } from './write-tools';
 const SERVER_VERSION = '1.2.0';
 
 const READ_INSTRUCTIONS =
-  'Access to one Cura Money user\'s personal finances. Amounts are in major currency units '
-  + '(e.g. dollars) of the `currency` field. Transaction types are income, expense, and transfer; transfers '
+  'Access to one Cura Money user\'s personal finances. Amounts are in major units of the '
+  + '`currency` field, such as dollars. Transaction types are income, expense, and transfer; transfers '
   + 'move money between the user\'s own accounts and are excluded from income/expense totals. Account '
   + 'balances are reported as positive magnitudes; credit and loan accounts are liabilities.';
 

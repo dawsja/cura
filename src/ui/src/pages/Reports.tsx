@@ -283,7 +283,7 @@ export function Reports() {
     if (widget === 'net-worth') {
       return (
         <Card className="flex-1">
-          <ChartHeader eyebrow="Wealth" title="Estimated net worth over time" subtitle="Reconstructed from today’s account balances by reversing monthly income and spending; not historical balance snapshots" />
+          <ChartHeader eyebrow="Wealth" title="Estimated net worth over time" subtitle="Reconstructed from today's account balances by reversing monthly income and spending; not historical balance snapshots" />
           <CardContent>
             <NetWorthChart data={netWorth.data ?? []} loading={netWorth.isPending} error={netWorth.isError} onRetry={() => void netWorth.refetch()} />
           </CardContent>
@@ -293,7 +293,7 @@ export function Reports() {
     if (widget === 'spending-by-category') {
       return (
         <Card className="flex-1">
-          <ChartHeader eyebrow="Spending" title="Spending by category" subtitle={spending.data ? `${monthYear(spendingMonth)} — ${formatMoney(spendingTotal)} total` : monthYear(spendingMonth)} right={<MonthPicker value={spendingMonth} onChange={setSpendingMonth} />} />
+          <ChartHeader eyebrow="Spending" title="Spending by category" subtitle={spending.data ? `${monthYear(spendingMonth)} · ${formatMoney(spendingTotal)} total` : monthYear(spendingMonth)} right={<MonthPicker value={spendingMonth} onChange={setSpendingMonth} />} />
           <CardContent>
             <SpendingDonut data={spending.data ?? []} loading={spending.isPending} error={spending.isError} onRetry={() => void spending.refetch()} month={spendingMonth} onDrilldown={drilldown} />
           </CardContent>

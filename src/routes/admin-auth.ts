@@ -49,7 +49,7 @@ adminAuthRoutes.patch(
       if (message === 'local_auth_disabled_precondition_failed') {
         return badRequest(
           c,
-          'Cannot disable local auth until at least one OIDC user has been promoted to admin. Sign in with OIDC, then promote that account from /settings → Users.',
+          'Cannot disable local auth until at least one OIDC user has been promoted to admin. Sign in with OIDC, then promote that account under Users in Settings.',
           'oidc_admin_required',
         );
       }

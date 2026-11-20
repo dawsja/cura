@@ -211,7 +211,7 @@ export function Setup() {
               disabled={step1Busy}
             />
             <AuthTextField
-              label="Password (min 12 chars)"
+              label="Password (at least 12 characters)"
               type="password"
               name="password"
               value={password}

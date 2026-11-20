@@ -109,7 +109,7 @@ export function PayoffProjectionChart({
     return (
       <Empty>
         <EmptyHeader>
-          <EmptyTitle>No accounts included in paydown. Toggle one in the list below.</EmptyTitle>
+          <EmptyTitle>No accounts are included. Turn on Include for one in the list below.</EmptyTitle>
         </EmptyHeader>
       </Empty>
     );

@@ -132,9 +132,9 @@ export function SaveUp() {
       </div>
 
       <p className="max-w-xl text-sm text-muted-foreground">
-        Pick a savings goal and the account you're stashing money in.
-        The progress bar tracks that account's live balance — every
-        dollar in counts toward your target.
+        Pick a savings goal and the account that holds the money for it.
+        The progress bar tracks that account's live balance, so every
+        dollar in the account counts toward your target.
       </p>
 
       {accList.length === 0 && (
@@ -164,10 +164,8 @@ export function SaveUp() {
               </div>
               <div className="text-xs text-muted-foreground">
                 {reachedGoals.length === list.length
-                  ? 'Every goal is funded. Nice work.'
-                  : reachedGoals.length > 0
-                    ? `${list.length - reachedGoals.length} still in progress.`
-                    : 'Every contribution moves you closer.'}
+                  ? 'Every goal is funded.'
+                  : `${list.length - reachedGoals.length} still in progress.`}
               </div>
             </div>
           </CardContent>
@@ -452,13 +450,9 @@ function GoalCard({
 }
 
 function goalStatusLabel(pct: number, reached: boolean): string {
-  if (reached) return 'You made it!';
-  if (pct >= 90) return 'So close!';
-  if (pct >= 75) return 'Home stretch!';
-  if (pct >= 50) return 'Halfway there!';
-  if (pct >= 25) return 'Great start!';
-  if (pct > 0) return "You're on your way!";
-  return 'Ready when you are!';
+  if (reached) return 'Goal reached';
+  if (pct > 0) return 'In progress';
+  return 'Not started';
 }
 
 function AnimatedPercentage({ value, reached }: { value: number; reached: boolean }) {

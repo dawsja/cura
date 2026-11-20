@@ -308,11 +308,11 @@ export async function updateUserRole(
 function protectionMessage(reason: AdminProtectionReason | null): string {
   switch (reason) {
     case 'last_admin':
-      return 'Cannot demote or delete the only admin — promote another user to admin first.';
+      return 'Cannot demote or delete the only admin. Promote another user to admin first.';
     case 'last_local_admin':
-      return 'Cannot demote or delete the last local admin — promote another user to admin first.';
+      return 'Cannot demote or delete the last local admin. Promote another user to admin first.';
     case 'last_oidc_admin_when_local_disabled':
-      return 'Cannot demote or delete the last OIDC admin while local auth is disabled — promote another OIDC user to admin first.';
+      return 'Cannot demote or delete the last OIDC admin while local auth is disabled. Promote another OIDC user to admin first.';
     default:
       return 'This user is protected.';
   }

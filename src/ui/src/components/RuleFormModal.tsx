@@ -214,8 +214,8 @@ export function RuleFormModal({
                     autoFocus
                   />
                   <FieldDescription>
-                    Case-insensitive. Matches this merchant exactly, or when the payee
-                    starts with this text (e.g. &quot;Starbucks&quot; matches &quot;STARBUCKS #1234&quot;).
+                    Ignores case. Matches this merchant exactly, or any payee that starts
+                    with this text. For example, &quot;Starbucks&quot; matches &quot;STARBUCKS #1234&quot;.
                   </FieldDescription>
                 </Field>
 

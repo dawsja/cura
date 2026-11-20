@@ -353,7 +353,7 @@ export function Paydown() {
       void qc.invalidateQueries({ queryKey: ['budget'] });
       void qc.invalidateQueries({ queryKey: ['categories'] });
       const message = result.rowCount === 0
-        ? 'No accounts included — toggle Include on at least one card to snapshot.'
+        ? 'No accounts are included. Turn on Include for at least one card to save it to Budget.'
         : `Saved ${result.rowCount} ${result.rowCount === 1 ? 'account' : 'accounts'} to Budget for ${monthYearShort(currentYm)}.`;
       let description: string | undefined;
       if (result.rowCount > 0 && result.scenario.method !== 'planned') {
@@ -484,7 +484,7 @@ export function Paydown() {
               type="button"
               onClick={saveToBudget}
               disabled={syncToBudget.isPending}
-              title={`Snapshot every included credit/loan account's planned payment for ${monthYearShort(currentYm)} into the Budget page`}
+              title={`Copy the planned payment of every included credit card and loan to the Budget page for ${monthYearShort(currentYm)}`}
             >
               {syncToBudget.isPending ? <Spinner data-icon="inline-start" /> : <Save data-icon="inline-start" />}
               {syncToBudget.isPending ? 'Saving…' : 'Save to Budget'}
@@ -517,8 +517,7 @@ export function Paydown() {
             <EmptyTitle>No debt accounts yet</EmptyTitle>
             <EmptyDescription>
               Add a credit card or loan on the <a href="/accounts">Accounts page</a>
-              {' '}and it'll show up here automatically. The pay-down
-              dashboard tracks every liability you owe on.
+              {' '}and it will show up here.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -573,11 +572,11 @@ export function Paydown() {
             />
             <SummaryCard
               icon={<Banknote className="h-4 w-4" />}
-              label={beyondHorizon ? 'Paid (40 years)' : 'Total P + I'}
+              label={beyondHorizon ? 'Paid (40 years)' : 'Total paid'}
               sub={
                 hasUnpayable
                   ? 'Keeps growing at these payments'
-                  : beyondHorizon ? 'Projection horizon only' : 'Principal + interest'
+                  : beyondHorizon ? 'Projection horizon only' : 'Principal and interest'
               }
               value={hasUnpayable || !hasIncludedDebt ? '—' : formatMoney(projection.totalPaid)}
               tone="amber"
@@ -855,7 +854,7 @@ function AccountEditModal({
                   disabled={saving}
                   className="tabular-nums"
                 />
-                <FieldDescription>Set to 0 for 0% APR (e.g. intro rate, paid-in-full card)</FieldDescription>
+                <FieldDescription>Enter 0 for a 0% APR, such as an intro rate or a card you pay in full.</FieldDescription>
               </Field>
               <Field data-invalid={requiresMin && minNum <= 0 ? true : undefined}>
                 <FieldLabel>Minimum monthly payment</FieldLabel>
@@ -875,9 +874,9 @@ function AccountEditModal({
                   />
                 </InputGroup>
                 {requiresMin && minNum <= 0 ? (
-                  <FieldError>Required — credit and loan accounts need a minimum payment to project a payoff.</FieldError>
+                  <FieldError>Required. Credit and loan accounts need a minimum payment to project a payoff.</FieldError>
                 ) : (
-                  <FieldDescription>Principal + interest only. Don't include tax/insurance.</FieldDescription>
+                  <FieldDescription>Principal and interest only. Don't include taxes or insurance.</FieldDescription>
                 )}
               </Field>
               <Field data-invalid={plannedBelowMin ? true : undefined}>

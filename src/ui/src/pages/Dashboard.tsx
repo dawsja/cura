@@ -654,7 +654,7 @@ export function Dashboard() {
         {!editing && reviews.count > 0 && (
           <div role="status" className="flex items-center gap-3 text-sm text-muted-foreground max-md:min-w-0 max-md:flex-1">
             <span className="max-md:min-w-0 max-md:flex-1">
-              {reviews.count} imported transaction{reviews.count === 1 ? ' isn’t' : 's aren’t'} counted until you review {reviews.count === 1 ? 'it' : 'them'}.
+              {reviews.count} imported transaction{reviews.count === 1 ? " isn't" : "s aren't"} counted until you review {reviews.count === 1 ? 'it' : 'them'}.
             </span>
             <Button type="button" variant="outline" className="shrink-0" onClick={reviews.openModal}>
               Review {reviews.count}

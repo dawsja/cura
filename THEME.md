@@ -1,10 +1,10 @@
-# Cura Money Theme
+# Cura Money theme
 
 This file is the source of truth for Cura Money's dark palette.
 Palette values live in `src/ui/src/styles.css`; component code should use
 semantic classes whenever possible.
 
-## Theme Behavior
+## Theme behavior
 
 Cura Money is **dark only**. There is no light palette and no theme
 preference. `src/ui/index.html` sets `<html class="dark">` statically so
@@ -12,7 +12,7 @@ third-party `dark:` styles resolve, `color-scheme` is `dark`, and the
 browser `theme-color` and web manifest use the page canvas (`#0a0d12`).
 App code never uses `dark:` variants or light/dark class pairs.
 
-## Palette Ownership
+## Palette ownership
 
 | File | Role |
 | --- | --- |
@@ -22,13 +22,13 @@ App code never uses `dark:` variants or light/dark class pairs.
 
 Do not edit generated root `public/` assets.
 
-## Color Strategy
+## Color strategy
 
-Cool blue-gray neutrals a step darker than GitHub Dark support long sessions
-with dense financial data. Cards are near-black and are separated from the
-page by hairline borders rather than by a lighter grey fill; menus, popovers,
-dialogs and sheets sit one tier brighter so they read as floating. Avoid
-grey filled panels and boxes nested inside boxes.
+The neutrals are cool blue-grays, one step darker than GitHub Dark. Cards are
+near-black, and hairline borders separate them from the page instead of a
+lighter grey fill. Menus, popovers, dialogs, and sheets sit one tier brighter
+so they read as floating. Avoid grey filled panels and boxes nested inside
+boxes.
 
 Surface ladder, darkest to brightest:
 
@@ -43,12 +43,13 @@ Surface ladder, darkest to brightest:
 
 Subtle sits above elevated so hover states stay visible inside overlays.
 
-The primary CTA remains fresh green (`#22c55e`). Its dark label (`#0d1117`)
-passes AA and keeps the button more legible than white text would. Success uses
+The primary call-to-action color is green (`#22c55e`). Its dark label
+(`#0d1117`) passes WCAG AA and is easier to read on the button than white
+text. Success uses
 a quieter green, danger uses red, warnings use ochre-yellow, and purple is
 reserved for depth and investment data.
 
-## Semantic Tokens
+## Semantic tokens
 
 | Role | Value | Token |
 | --- | --- | --- |
@@ -94,11 +95,11 @@ drive the shadcn variables so primitives stay on the same palette:
 
 Prefer shadcn components (`Button`, `Card`, `Dialog`, `AlertDialog`, `Sheet`,
 `Drawer`, `Input`, `Select`, `Field`, `Alert`, `Empty`, `Table`, `Badge`,
-`DropdownMenu`) over custom markup. Overlay stacking, titles, and focus belong
-to those primitives — do not rebuild them with generic `fixed`/`inset`/`z-*`
+`DropdownMenu`) over custom markup. Those primitives own overlay stacking, titles,
+and focus. Do not rebuild them with generic `fixed`, `inset`, and `z-*`
 utility combinations. Bottom sheets use `Drawer`.
 
-## Accent Roles
+## Accent roles
 
 | Role | Foreground | Core/action |
 | --- | --- | --- |
@@ -113,7 +114,7 @@ mapping to avoid a broad component migration. The accent scales are
 intentionally role-driven rather than monotonic: `200/300/400` are light
 readable foregrounds while `50/100/900` provide dark tinted surfaces.
 
-## Chart Tokens
+## Chart tokens
 
 | Token | Value |
 | --- | --- |
@@ -148,10 +149,10 @@ is unique and retains at least 3:1 contrast against every surface it is
 drawn on, up to the elevated tier (`#151b23`). Series
 still use labels, tooltips, and accessible data tables rather than color alone.
 
-That contrast holds for strokes, not for compounded fills. Where several series
-overlap without stacking — the Pay down page's per-account payoff curves —
-translucent fills pile up into one flat tint that no longer separates the
-tokens, so those series render as strokes alone and only a lone series takes a
+That contrast holds for strokes, not for compounded fills. When several series
+overlap without stacking, as the Pay down page's per-account payoff curves do,
+their translucent fills combine into one flat tint that no longer separates the
+tokens. Those series render as strokes only, and only a single series gets a
 filled gradient. Stacked or single-series charts (Reports cash flow, net worth)
 keep their gradient fills, since nothing overlaps to compound.
 

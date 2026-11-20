@@ -53,7 +53,7 @@ const previousEncryptionKeys = z.preprocess(
     if (keys.some((key) => key.length < 32)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'each DATA_ENCRYPTION_KEY_PREVIOUS key must be at least 32 chars',
+        message: 'each DATA_ENCRYPTION_KEY_PREVIOUS key must be at least 32 characters',
       });
     }
   }),
@@ -116,7 +116,7 @@ const Env = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
-  // Public showcase mode. This is intentionally a single switch: when enabled,
+  // Public demo mode. This is intentionally a single switch: when enabled,
   // startup and scheduled jobs replace the entire application database with
   // the built-in demo fixture.
   DEMO_MODE: z
@@ -142,10 +142,10 @@ const Env = z.object({
   // Only for recovering a lost SQLite file; changes made since are lost.
   SQLITE_REIMPORT: booleanFlag('false'),
 
-  BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 chars'),
+  BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 characters'),
   DATA_ENCRYPTION_KEY: z.preprocess(
     (value) => value === '' ? undefined : value,
-    z.string().min(32, 'DATA_ENCRYPTION_KEY must be at least 32 chars').optional(),
+    z.string().min(32, 'DATA_ENCRYPTION_KEY must be at least 32 characters').optional(),
   ),
   DATA_ENCRYPTION_KEY_PREVIOUS: previousEncryptionKeys,
 

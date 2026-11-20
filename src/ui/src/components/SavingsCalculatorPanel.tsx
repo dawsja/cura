@@ -29,17 +29,17 @@ const METHOD_OPTIONS: MethodOption[] = [
   {
     value: 'planned',
     label: 'Planned payments',
-    description: "Pay the scheduled minimum or planned amount on each debt without redirecting freed-up payments to other debts as they're paid off.",
+    description: 'Pay the minimum or planned amount on each debt. When a debt is paid off, its payment is not moved to the other debts.',
   },
   {
     value: 'avalanche',
     label: 'Debt avalanche',
-    description: 'Target the highest-interest debt first and roll each completed payment into the next highest-interest balance to minimize total interest paid.',
+    description: 'Pay extra on the highest-interest debt first. When it is paid off, add its payment to the next highest-interest debt. This minimizes total interest.',
   },
   {
     value: 'snowball',
     label: 'Debt snowball',
-    description: 'Pay off the smallest balances first to build momentum, rolling each eliminated payment into the next smallest debt.',
+    description: 'Pay extra on the smallest balance first. When it is paid off, add its payment to the next smallest debt.',
   },
 ];
 

@@ -79,11 +79,11 @@ interface AdminUser {
 function protectionTooltip(reason: AdminUser['protectionReason']): string {
   switch (reason) {
     case 'last_admin':
-      return 'Only remaining admin — demote or delete would lock the instance. Promote another user first.';
+      return 'This is the only admin. Demoting or deleting this user would lock the instance. Promote another user to admin first.';
     case 'last_local_admin':
-      return 'Only local admin — demote or delete would remove the recovery path. Promote another user to admin first.';
+      return 'This is the only local admin. Without one, no admin can sign in if OIDC stops working. Promote another user to admin first.';
     case 'last_oidc_admin_when_local_disabled':
-      return 'Only OIDC admin and local auth is disabled — this is the only sign-in path. Promote another OIDC user to admin first.';
+      return 'This is the only OIDC admin, and local sign-in is disabled, so no other admin can sign in. Promote another OIDC user to admin first.';
     default:
       return 'Protected admin';
   }
@@ -233,7 +233,7 @@ function ContainerUpdateSection() {
           <SectionIcon><Container className="h-4 w-4" /></SectionIcon>
           Updates
         </CardTitle>
-        <CardDescription>Checks the published latest image periodically.</CardDescription>
+        <CardDescription>While this page is open, Cura checks for a newer published image every 30 minutes.</CardDescription>
         <CardAction>
           <Button type="button" variant="outline" onClick={() => refresh.mutate()} disabled={checking}>
             {checking ? <Spinner data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
@@ -371,7 +371,7 @@ function OidcSection() {
               <EmptyHeader>
                 <EmptyMedia variant="icon"><KeyRound /></EmptyMedia>
                 <EmptyTitle>No OIDC providers configured yet</EmptyTitle>
-                <EmptyDescription>Click "Add provider" to wire one up.</EmptyDescription>
+                <EmptyDescription>Click "Add provider" to add one.</EmptyDescription>
               </EmptyHeader>
             </Empty>
           )}
@@ -567,7 +567,7 @@ function AuthenticationSection() {
           )}
           <div className="min-w-0 flex-1">
             <div className="font-medium">
-              Local authentication (email + password)
+              Local authentication (email and password)
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {localAuthDisabled
@@ -675,9 +675,9 @@ function LocalAuthConfirmModal({
                     the user signs out.
                   </p>
                   <p>
-                    You can re-enable local sign-in later from this same screen.
-                    The guard requires at least one admin who has signed in via
-                    OIDC &mdash; that has been confirmed.
+                    You can re-enable local sign-in later from this screen.
+                    Disabling it requires at least one admin who has signed in
+                    with OIDC, and this instance has one.
                   </p>
                 </>
               ) : (
@@ -763,7 +763,7 @@ function PreferencesSection() {
                 <SelectGroup>
                   {SUPPORTED_CURRENCIES.map((c) => (
                     <SelectItem key={c.code} value={c.code}>
-                      {c.code} — {c.label}
+                      {c.code} · {c.label}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -1259,7 +1259,7 @@ function PasswordSection({ hasCredential, email }: { hasCredential: boolean; ema
                   </InputGroupButton>
                 </InputGroupAddon>
               </InputGroup>
-              <FieldDescription>Min 12 characters</FieldDescription>
+              <FieldDescription>At least 12 characters</FieldDescription>
             </Field>
             <Field data-invalid={invalid || undefined}>
               <FieldLabel htmlFor={confirmId}>Confirm new password</FieldLabel>
@@ -1649,7 +1649,7 @@ function ResetPasswordModal({
                 autoComplete="new-password"
                 aria-invalid={invalid || undefined}
               />
-              <FieldDescription>Min 12 characters</FieldDescription>
+              <FieldDescription>At least 12 characters</FieldDescription>
             </Field>
           </FieldGroup>
           {err && (
@@ -1753,7 +1753,7 @@ function AddUserModal({
                 autoComplete="new-password"
                 aria-invalid={invalid || undefined}
               />
-              <FieldDescription>Min 12 characters</FieldDescription>
+              <FieldDescription>At least 12 characters</FieldDescription>
             </Field>
           </FieldGroup>
           {err && (
@@ -1816,7 +1816,7 @@ function DeleteUserModal({
                 <li>Categories and sub-categories</li>
                 <li>Monthly budget rows</li>
                 <li>Settings</li>
-                <li>Better Auth session + OIDC account link</li>
+                <li>Sign-in sessions and linked OIDC accounts</li>
               </ul>
               <p className="font-medium text-destructive">
                 This cannot be undone.
@@ -1849,7 +1849,7 @@ function DeleteUserModal({
           </Button>
           <Button type="button" variant="destructive" onClick={onConfirm} disabled={!canConfirm}>
             {busy ? <Spinner data-icon="inline-start" /> : null}
-            {busy ? 'Deleting…' : 'Delete user + data'}
+            {busy ? 'Deleting…' : 'Delete user and data'}
           </Button>
         </DialogFooter>
       </DialogContent>

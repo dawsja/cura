@@ -1,5 +1,5 @@
 # =============================================================================
-# Cura Money — development override. Use together with docker-compose.yml:
+# Cura Money development override. Use together with docker-compose.yml:
 #
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 #

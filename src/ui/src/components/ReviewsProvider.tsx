@@ -100,7 +100,7 @@ export function ReviewsProvider({ children }: { children: ReactNode }) {
     return !result.isError;
   }, [refetchCount]);
   const celebrate = useCallback(() => {
-    toast.success("You're all caught up 🎉", {
+    toast.success("You're all caught up", {
       description: 'Every transaction has been reviewed.',
     });
   }, []);

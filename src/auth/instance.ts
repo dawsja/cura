@@ -101,7 +101,7 @@ export async function initAuth(): Promise<Auth> {
 export function getAuth(): Auth {
   if (!_auth) {
     throw new Error(
-      'getAuth() called before initAuth() — boot order bug in src/index.ts',
+      'getAuth() called before initAuth(). Check the boot order in src/index.ts.',
     );
   }
   return _auth;

@@ -714,7 +714,7 @@ function CategoryGroup({
       </CardContent>}
       {deleteTarget?.kind === 'category' && (
         <ConfirmDialog
-          title={`Delete “${deleteTarget.category.name}”?`}
+          title={`Delete "${deleteTarget.category.name}"?`}
           confirmLabel="Delete category"
           destructive
           onConfirm={() => onDeleteMain(deleteTarget.category.id)}
@@ -730,7 +730,7 @@ function CategoryGroup({
       )}
       {deleteTarget?.kind === 'subcategory' && (
         <ConfirmDialog
-          title={`Delete “${deleteTarget.subcategory.name}”?`}
+          title={`Delete "${deleteTarget.subcategory.name}"?`}
           confirmLabel="Delete subcategory"
           destructive
           onConfirm={() => onDeleteSub(deleteTarget.category.id, deleteTarget.subcategory.id)}

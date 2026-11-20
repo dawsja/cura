@@ -794,25 +794,25 @@ export function Accounts() {
       )}
       {confirmation?.action === 'hide' && (
         <ConfirmDialog
-          title={`Hide “${confirmation.account.alias || confirmation.account.name}”?`}
+          title={`Hide "${confirmation.account.alias || confirmation.account.name}"?`}
           confirmLabel="Hide account"
           onConfirm={() => hide.mutateAsync(confirmation.account.id)}
           onClose={() => setConfirmation(null)}
         >
-          <p>This account and its activity will be excluded from Home, Transactions, Budget, Paydown, Reports, and the main account list.</p>
+          <p>This account and its activity will be excluded from Home, Transactions, Budget, Pay down, Reports, and the main account list.</p>
           <p>It will remain available in the hidden accounts section, and sync will pause until you unhide it.</p>
         </ConfirmDialog>
       )}
       {confirmation?.action === 'delete' && (
         <ConfirmDialog
-          title={`Delete “${confirmation.account.alias || confirmation.account.name}”?`}
+          title={`Delete "${confirmation.account.alias || confirmation.account.name}"?`}
           confirmLabel="Delete account"
           destructive
           onConfirm={() => del.mutateAsync(confirmation.account.id)}
           onClose={() => setConfirmation(null)}
         >
           <p>This permanently removes the account balance and detaches any savings goals linked to the account.</p>
-          <p>Account-specific paydown rows will also be removed.</p>
+          <p>Its planned payments in the Budget page's Pay down section will also be removed.</p>
           <p>If its name uniquely matches a Pay down category, that category, its budget entries, and its categorization rules will also be removed.</p>
           <p>Historical transactions are retained and remain visible in your ledger and reports.</p>
         </ConfirmDialog>
@@ -943,8 +943,8 @@ function EditAccountModal({
               </Select>
               <FieldDescription>
                 {type === 'investment'
-                  ? 'Investment is balance-only: value stays on Accounts/Home for growth; no transactions are imported or shown.'
-                  : 'Affects net worth sign and paydown. Survives SimpleFIN sync.'}
+                  ? 'Investment accounts track a balance only. The balance shows on Accounts and Home, and Cura does not import or show their transactions.'
+                  : 'Decides whether the balance adds to or subtracts from net worth, and whether the account appears on Pay down. Survives SimpleFIN sync.'}
               </FieldDescription>
             </Field>
           </FieldGroup>

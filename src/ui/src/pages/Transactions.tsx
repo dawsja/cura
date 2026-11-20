@@ -342,7 +342,7 @@ export function Transactions() {
         {
           description: vars.transaction.sourceClassificationTrusted
             ? `Match ${TYPE_STYLE[vars.transaction.sourceType].label} · ${vars.transaction.sourceCategory}${vars.transaction.sourceSubCategory ? ` › ${vars.transaction.sourceSubCategory}` : ''} on ${vars.transaction.account}.`
-            : `Match this merchant on ${vars.transaction.account}. Original type/category was not retained for this older transaction.`,
+            : `Match this merchant on ${vars.transaction.account}. The original type and category were not kept for this older transaction.`,
           duration: 8000,
           action: {
             label: 'Create scoped rule',
@@ -734,7 +734,7 @@ export function Transactions() {
                   type="button"
                   onClick={() => setDetailTx(t)}
                   className="flex w-full items-center gap-3 border-b border-default py-3 text-left transition-transform active:scale-[0.99]"
-                  aria-label={`${t.merchant}, ${TYPE_STYLE[t.type].label}, ${formatMoney(t.amount)} — view details`}
+                  aria-label={`View details for ${t.merchant}, ${TYPE_STYLE[t.type].label}, ${formatMoney(t.amount)}`}
                 >
                   <span className={clsx('flex h-10 w-10 shrink-0 items-center justify-center rounded-full', TYPE_ICON_WRAP[t.type])} aria-hidden="true">
                     <TypeIcon className="h-[18px] w-[18px]" strokeWidth={2.2} />

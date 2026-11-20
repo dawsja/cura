@@ -526,7 +526,7 @@ export function ReviewCarouselModal({
             <EmptyMedia variant="icon">
               {isFinished ? <CircleCheck /> : <Inbox />}
             </EmptyMedia>
-            <EmptyTitle>{isFinished ? 'You’re all caught up' : 'Nothing to review'}</EmptyTitle>
+            <EmptyTitle>{isFinished ? "You're all caught up" : 'Nothing to review'}</EmptyTitle>
             <EmptyDescription>
               {isFinished
                 ? `You reviewed ${plural(completedCount, 'transaction')}.`
